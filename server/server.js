@@ -12,7 +12,7 @@ const PORT = Number(process.env.PORT || 3001);
 // Public hosting needs to listen on all network interfaces.
 const HOST = process.env.HOST || "0.0.0.0";
 
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 20;
 const SNAPSHOT_RATE = 15;
 
 const SERVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
