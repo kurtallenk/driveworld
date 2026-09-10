@@ -14,8 +14,26 @@ import { VehicleFeedback } from "../vehicle/VehicleFeedback.js";
 import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
 
 const PLAYER_COLORS = [
-  "#ef5350", "#4285f4", "#58b76b", "#f5ce47",
-  "#aa70d6", "#f29b43", "#ee83bd", "#50cad5"
+  "#ef5350", // 1 - Red
+  "#4285f4", // 2 - Blue
+  "#58b76b", // 3 - Green
+  "#f5ce47", // 4 - Yellow
+  "#aa70d6", // 5 - Purple
+  "#f29b43", // 6 - Orange
+  "#ee83bd", // 7 - Pink
+  "#50cad5", // 8 - Cyan
+  "#8d6e63", // 9 - Brown
+  "#78909c", // 10 - Blue Gray
+  "#26a69a", // 11 - Teal
+  "#7e57c2", // 12 - Deep Purple
+  "#ec407a", // 13 - Rose
+  "#66bb6a", // 14 - Light Green
+  "#29b6f6", // 15 - Light Blue
+  "#ffa726", // 16 - Amber
+  "#ab47bc", // 17 - Violet
+  "#26c6da", // 18 - Turquoise
+  "#d4e157", // 19 - Lime
+  "#ff7043"  // 20 - Deep Orange
 ];
 
 const FIXED_DT = 1 / 60;
