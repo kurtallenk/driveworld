@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Driveworld — Local Prototype</title>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <section id="loading">
+      <h1>DRIVEWORLD</h1>
+      <p id="loading-status">Local physics prototype · Phase 1A</p>
+      <button id="start">Enter sandbox</button>
+    </section>
+
+    <section id="hud" hidden>
+      <strong id="speed">0 km/h</strong>
+      <div id="gear">ARCADE · D</div>
+      <div id="engine-state">Arcade drivetrain</div>
+      <button id="start-engine" type="button" disabled>
+  Start engine
+</button>
+      <small>Keyboard Arcade: W accelerate · S brake/reverse · A/D steer</small>
+      <small>Space handbrake · R reset</small>
+      <small>C camera · ESC settings · R reset</small>
+    </section>
+
+<details id="debug">
+  <summary>Input diagnostics</summary>
+
+  <div class="debug-actions">
+    <button id="copy-diagnostics" type="button">Copy diagnostics</button>
+    <button id="download-diagnostics" type="button">Download JSON</button>
+  </div>
+
+  <div class="debug-actions">
+  <button id="enable-v99" type="button" disabled>
+    Enable my V99 profile
+  </button>
+
+  <button id="use-keyboard" type="button" disabled>
+    Use keyboard
+  </button>
+</div>
+
+<div class="debug-actions">
+  <button id="camera-toggle" type="button" disabled>
+    Change camera · C
+  </button>
+
+  <button id="enable-audio" type="button" disabled>
+    Enable audio
+  </button>
+</div>
+
+<label class="presentation-setting">
+  Master volume
+  <input
+    id="master-volume"
+    type="range"
+    min="0"
+    max="1"
+    step="0.01"
+    value="0.3"
+  />
+</label>
+
+<label class="presentation-setting">
+  <input id="camera-vibration" type="checkbox" checked />
+  Subtle driver head movement and vibration
+</label>
+
+<p id="presentation-status" role="status">
+  Driver View: C · Look around: right-click and drag
+</p>
+
+<details class="presentation-options">
+  <summary>Camera and audio settings</summary>
+
+  <label class="presentation-setting">
+    Driver FOV
+    <input
+      data-presentation="driverFov"
+      type="range" min="50" max="100" step="1"
+    />
+  </label>
+
+  <label class="presentation-setting">
+    Chase FOV
+    <input
+      data-presentation="chaseFov"
+      type="range" min="50" max="100" step="1"
+    />
+  </label>
+
+  <label class="presentation-setting">
+    Chase distance
+    <input
+      data-presentation="cameraDistance"
+      type="range" min="4" max="14" step="0.1"
+    />
+  </label>
+
+  <label class="presentation-setting">
+    Chase height
+    <input
+      data-presentation="cameraHeight"
+      type="range" min="1.5" max="6" step="0.1"
+    />
+  </label>
+
+  <label class="presentation-setting">
+    Look sensitivity
+    <input
+      data-presentation="lookSensitivity"
+      type="range" min="0.001" max="0.008" step="0.0001"
+    />
+  </label>
+
+  <label class="presentation-setting">
+    Engine volume
+    <input
+      data-presentation="engineVolume"
+      type="range" min="0" max="1" step="0.01"
+    />
+  </label>
+
+  <label class="presentation-setting">
+    Environment volume
+    <input
+      data-presentation="environmentVolume"
+      type="range" min="0" max="1" step="0.01"
+    />
+  </label>
+
+  <label class="presentation-setting">
+    Effects volume
+    <input
+      data-presentation="effectsVolume"
+      type="range" min="0" max="1" step="0.01"
+    />
+  </label>
+
+  <p id="settings-save-status" role="status"></p>
+</details>
+
+
+<p id="control-status" role="status">
+  Start the sandbox to select controls.
+</p>
+
+<div class="debug-actions">
+  <button id="select-arcade" type="button" disabled>
+    Arcade
+  </button>
+
+  <button id="select-manual" type="button" disabled>
+    Realistic Prototype
+  </button>
+
+</div>
+
+<p id="driving-status" role="status">
+  Stop the vehicle before changing driving mode.
+</p>
+
+  <p id="diagnostics-status" role="status" aria-live="polite"></p>
+
+  <pre id="input-debug">Start the game to inspect inputs.</pre>
+</details>
+
+<button id="open-menu" type="button" hidden>
+  Settings · ESC
+</button>
+
+<section
+  id="settings-menu"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="settings-title"
+  hidden
+>
+  <div class="settings-window">
+    <header class="settings-header">
+      <div>
+        <h2 id="settings-title">DRIVEWORLD</h2>
+        <p>Local session paused</p>
+      </div>
+
+      <button id="close-menu" type="button">Resume · ESC</button>
+    </header>
+
+    <nav class="settings-tabs" aria-label="Settings categories">
+      <button type="button" data-settings-tab="controls">Controls</button>
+      <button type="button" data-settings-tab="driving">Driving</button>
+      <button type="button" data-settings-tab="presentation">
+        Camera & Audio
+      </button>
+    </nav>
+
+    <section data-settings-page="controls">
+      <h3>Input device</h3>
+      <div id="menu-controls"></div>
+      <p class="settings-help">
+        The saved V99 profile uses your verified DInput layout.
+        Center steering, release pedals, and select neutral after resuming.
+      </p>
+    </section>
+
+    <section data-settings-page="driving" hidden>
+      <h3>Driving mode</h3>
+      <div id="menu-driving"></div>
+      <p class="settings-help">
+        Stop before changing driving mode. In Realistic Prototype,
+        use your physical clutch and H-pattern shifter.
+      </p>
+    </section>
+
+    <section data-settings-page="presentation" hidden>
+      <h3>Camera and audio</h3>
+      <div id="menu-presentation"></div>
+      <p class="settings-help">
+        C switches cameras. Right-click and drag in Driver View to look around.
+      </p>
+    </section>
+  </div>
+</section>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
