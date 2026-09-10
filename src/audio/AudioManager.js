@@ -4,7 +4,7 @@ const clamp = (value, min, max) =>
 export class AudioManager {
   constructor() {
     this.context = null;
-    this.enabled = false;
+    this.enabled = true;
     this.volume = 0.3;
     this.engineVolume = 1;
     this.environmentVolume = 1;
