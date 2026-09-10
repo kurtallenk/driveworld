@@ -373,7 +373,7 @@ export class MultiplayerClient {
 
   updateCount() {
     this.count.textContent =
-      `Players: ${this.remotes.size + (this.selfId ? 1 : 0)} / 8`;
+      `Players: ${this.remotes.size + (this.selfId ? 1 : 0)} / 20`;
   }
 
   clearRemotes() {
