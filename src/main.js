@@ -78,6 +78,7 @@ startButton.addEventListener("click", async () => {
     // A missing multiplayer server does not prevent local driving.
     try {
       multiplayer = new MultiplayerClient(game, name);
+      game.multiplayer = multiplayer;
       chatPanel = new ChatPanel(multiplayer);
       multiplayer.chatPanel = chatPanel;
     } catch (error) {

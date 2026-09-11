@@ -3,10 +3,11 @@ import * as CANNON from "cannon-es";
 
 import { createTerrain } from "./Terrain.js";
 import { createRoads } from "./Roads.js";
+import { createHouse } from "./Buildings.js";
 
 export function createWorld(scene, physics) {
   scene.background = new THREE.Color("#a8cee3");
-  scene.fog = new THREE.Fog("#a8cee3", 100, 230);
+  scene.fog = new THREE.Fog("#a8cee3", 100, 320);
 
   scene.add(new THREE.HemisphereLight(
     0xd9f1ff,
@@ -20,12 +21,12 @@ export function createWorld(scene, physics) {
   sun.shadow.mapSize.set(1024, 1024);
 
   Object.assign(sun.shadow.camera, {
-    left: -90,
-    right: 90,
-    top: 90,
-    bottom: -90,
+    left: -140,
+    right: 140,
+    top: 140,
+    bottom: -140,
     near: 1,
-    far: 200
+    far: 260
   });
 
   sun.shadow.bias = -0.0005;
@@ -71,10 +72,14 @@ export function createWorld(scene, physics) {
   }
 
   // Visible boundaries prevent driving beyond the finite heightfield.
-  solidBox([2, 20, 240], [-119, 8, 0], 0x596955);
-  solidBox([2, 20, 240], [119, 8, 0], 0x596955);
-  solidBox([240, 20, 2], [0, 8, -119], 0x596955);
-  solidBox([240, 20, 2], [0, 8, 119], 0x596955);
+  solidBox([2, 20, 400], [-199, 8, 0], 0x596955);
+  solidBox([2, 20, 400], [199, 8, 0], 0x596955);
+  solidBox([400, 20, 2], [0, 8, -199], 0x596955);
+  solidBox([400, 20, 2], [0, 8, 199], 0x596955);
+
+  // House on the neighborhood loop, just outside the road so it doesn't
+  // block the drivable circuit, and well inside the boundary walls.
+  createHouse(scene, physics, terrain, 190, 35, -Math.PI / 2);
 
   // Deterministic placement: refreshes keep scenery in the same places.
   let seed = 123456;
@@ -86,9 +91,9 @@ export function createWorld(scene, physics) {
 
   const placements = [];
 
-  for (let attempt = 0; attempt < 1500 && placements.length < 150; attempt++) {
-    const x = (random() - 0.5) * 216;
-    const z = (random() - 0.5) * 216;
+  for (let attempt = 0; attempt < 4500 && placements.length < 420; attempt++) {
+    const x = (random() - 0.5) * 380;
+    const z = (random() - 0.5) * 380;
 
     if (Math.abs(x) < 26) continue;
     if (roads.surfaceAt(x, z) !== "grass") continue;

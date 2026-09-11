@@ -19,6 +19,13 @@ const MAX_CHAT_LENGTH = 200;
 const CHAT_WINDOW_MS = 4000;
 const CHAT_LIMIT_PER_WINDOW = 6;
 
+// Session-only delivery stats (Phase 2). There is no database in this
+// project, so the leaderboard tracks players connected during the
+// current server process rather than persisting across restarts.
+const DELIVERY_REWARD = 25;
+const MIN_DELIVERY_INTERVAL_MS = 3000;
+const LEADERBOARD_SIZE = 10;
+
 const SERVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIRECTORY = path.resolve(SERVER_DIRECTORY, "../dist");
 
@@ -317,6 +324,22 @@ function publicPlayer(player) {
   };
 }
 
+function buildLeaderboard() {
+  return Array.from(players.values())
+    .filter(player => player.deliveries > 0)
+    .sort((a, b) => b.deliveries - a.deliveries)
+    .slice(0, LEADERBOARD_SIZE)
+    .map(player => ({
+      name: player.name,
+      deliveries: player.deliveries,
+      score: player.score
+    }));
+}
+
+function broadcastLeaderboard() {
+  broadcast({ type: "leaderboard", entries: buildLeaderboard() });
+}
+
 function validVector(value, length, limit) {
   return (
     Array.isArray(value) &&
@@ -415,7 +438,10 @@ wss.on("connection", (ws, request) => {
     rateWindow: Date.now(),
     messageCount: 0,
     chatWindow: Date.now(),
-    chatCount: 0
+    chatCount: 0,
+    deliveries: 0,
+    score: 0,
+    lastDeliveryAt: 0
   };
 
   ws.isAlive = true;
@@ -430,7 +456,8 @@ wss.on("connection", (ws, request) => {
     type: "welcome",
     protocol: 1,
     self: publicPlayer(player),
-    players: Array.from(players.values(), publicPlayer)
+    players: Array.from(players.values(), publicPlayer),
+    leaderboard: buildLeaderboard()
   });
 
   broadcast({
@@ -488,6 +515,22 @@ wss.on("connection", (ws, request) => {
       return;
     }
 
+    if (message?.type === "delivery") {
+      const now = Date.now();
+
+      // The client determines completion locally (proximity to a beacon);
+      // this only guards the shared leaderboard against spam, it does not
+      // re-validate the delivery itself.
+      if (now - player.lastDeliveryAt < MIN_DELIVERY_INTERVAL_MS) return;
+
+      player.lastDeliveryAt = now;
+      player.deliveries++;
+      player.score += DELIVERY_REWARD;
+
+      broadcastLeaderboard();
+      return;
+    }
+
     if (message?.type === "chat") {
       const chatNow = Date.now();
 
@@ -528,6 +571,8 @@ wss.on("connection", (ws, request) => {
       type: "leave",
       id: player.id
     });
+
+    broadcastLeaderboard();
 
     console.log(
       `Left ${player.id} (${players.size}/${MAX_PLAYERS})`

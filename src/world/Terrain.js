@@ -2,16 +2,17 @@ import * as THREE from "three";
 import * as CANNON from "cannon-es";
 
 export function createTerrain(scene, physics) {
-  const size = 240;
-  const divisions = 120;
+  const size = 400;
+  const divisions = 200;
   const step = size / divisions;
   const half = size / 2;
 
   const data = [];
 
   function hillHeight(x, z) {
-    // Keep the central roads and original spawn region flat.
-    const fade = THREE.MathUtils.smoothstep(Math.abs(x), 45, 75);
+    // Keep the central road grid and neighborhood area flat; only the
+    // outer edges near the boundary walls roll into hills.
+    const fade = THREE.MathUtils.smoothstep(Math.abs(x), 150, 195);
 
     return fade * (
       3.5 +

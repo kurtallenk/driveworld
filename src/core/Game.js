@@ -13,6 +13,7 @@ import { SettingsMenu } from "../ui/SettingsMenu.js";
 import { VehicleFeedback } from "../vehicle/VehicleFeedback.js";
 import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
 import { MobileControls } from "../ui/MobileControls.js";
+import { DeliverySystem } from "../gameplay/DeliverySystem.js";
 
 const PLAYER_COLORS = [
   "#ef5350", "#4285f4", "#58b76b", "#f5ce47",
@@ -68,7 +69,20 @@ this.audio.effectsVolume =
     this.physics.broadphase = new CANNON.SAPBroadphase(this.physics);
     this.physics.solver.iterations = 10;
 
-    createWorld(this.scene, this.physics);
+    this.world = createWorld(this.scene, this.physics);
+
+    // multiplayer.js assigns this once the socket client connects, so the
+    // delivery system can report completions for the session leaderboard.
+    this.multiplayer = null;
+
+    this.deliverySystem = new DeliverySystem(this.scene, this.world.terrain);
+
+    this.deliverySystem.onDelivery = () => {
+      this.multiplayer?.reportDelivery();
+    };
+
+    this.deliveryStatusElement = document.querySelector("#delivery-status");
+    this.deliveryCountElement = document.querySelector("#delivery-count");
 
     // Phase 2 replaces this local assignment with server session data.
     this.player = {
@@ -398,6 +412,7 @@ if (mobileButton) {
 }
 
     this.vehicle.sync();
+    this.deliverySystem.update(this.vehiclePhysics.body.position, dt);
 
 const speed = this.vehiclePhysics.body.velocity.length();
 const manual = this.drivingMode === "manual";
@@ -528,6 +543,10 @@ this.renderer.render(this.scene, this.camera);
   this.input.status,
   this.input.storageWarning
 ].filter(Boolean).join(" ");
+
+this.deliveryStatusElement.textContent = this.deliverySystem.statusText;
+this.deliveryCountElement.textContent =
+  `Deliveries: ${this.deliverySystem.deliveries} · Score: ${this.deliverySystem.score}`;
 
 this.debugElement.textContent = JSON.stringify({
   activeInput: this.input.activeSource,

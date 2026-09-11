@@ -89,15 +89,33 @@ export class MultiplayerClient {
       }
     });
 
+    this.leaderboardHeading = document.createElement("strong");
+    this.leaderboardHeading.textContent = "Delivery leaderboard";
+    this.leaderboardHeading.style.display = "block";
+    this.leaderboardHeading.style.marginTop = "0.6rem";
+
+    this.leaderboardList = document.createElement("ol");
+    Object.assign(this.leaderboardList.style, {
+      margin: "0.3rem 0 0",
+      paddingLeft: "1.1rem"
+    });
+
+    this.leaderboardEmpty = document.createElement("small");
+    this.leaderboardEmpty.textContent = "No deliveries yet this session.";
+
     this.panel.append(
       this.status,
       this.count,
       this.details,
-      this.button
+      this.button,
+      this.leaderboardHeading,
+      this.leaderboardList,
+      this.leaderboardEmpty
     );
 
     document.body.append(this.panel);
     this.updateCount();
+    this.updateLeaderboard([]);
   }
 
   collectPaintMaterials() {
@@ -230,6 +248,7 @@ export class MultiplayerClient {
         `ONLINE · ${message.self.name}`;
 
       this.updateCount();
+      this.updateLeaderboard(message.leaderboard ?? []);
       this.chatPanel?.addSystemMessage(`You joined as ${message.self.name}.`);
       return;
     }
@@ -260,6 +279,11 @@ export class MultiplayerClient {
         this.remotes.get(player.id)?.pushState(player.state, now);
       }
 
+      return;
+    }
+
+    if (message.type === "leaderboard") {
+      this.updateLeaderboard(message.entries ?? []);
       return;
     }
 
@@ -388,6 +412,32 @@ export class MultiplayerClient {
         paused
       }
     }));
+  }
+
+  reportDelivery() {
+    if (
+      !this.running ||
+      !this.selfId ||
+      this.socket?.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    this.socket.send(JSON.stringify({ type: "delivery" }));
+  }
+
+  updateLeaderboard(entries) {
+    this.leaderboardList.innerHTML = "";
+
+    for (const entry of entries) {
+      const item = document.createElement("li");
+      item.textContent = `${entry.name} — ${entry.deliveries} deliveries`;
+      this.leaderboardList.append(item);
+    }
+
+    const hasEntries = entries.length > 0;
+    this.leaderboardList.hidden = !hasEntries;
+    this.leaderboardEmpty.hidden = hasEntries;
   }
 
   sendChat(text) {

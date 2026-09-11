@@ -29,7 +29,6 @@ canvas {
 }
 
 #loading[hidden], #hud[hidden] { display: none; }
-
 .bg_loading{ 
   width: 600px;
   height: auto;
@@ -37,6 +36,7 @@ canvas {
   border-radius: 20px;
   box-shadow: 0 0 15px black;
 }
+
 
 h1 {
   letter-spacing: 0.2em;
@@ -92,6 +92,19 @@ button:disabled {
   margin-bottom: 0.6rem;
 }
 
+#delivery-status {
+  display: block;
+  color: #ffce7a;
+  font-size: 0.85rem;
+  margin-top: 0.3rem;
+}
+
+#delivery-count {
+  display: block;
+  color: #4be3a0;
+  margin-bottom: 0.4rem;
+}
+
 small {
   display: block;
   line-height: 1.6;
@@ -99,6 +112,9 @@ small {
 }
 
 #debug {
+  /* Dev-only diagnostics panel. Kept in the DOM (DiagnosticsExport /
+     InputDiscoveryPanel append/query into it) but never shown to players. */
+  display: none !important;
   top: calc(env(safe-area-inset-top, 0px) + 1rem);
   right: calc(env(safe-area-inset-right, 0px) + 1rem);
   max-width: min(440px, calc(100vw - 2rem));
@@ -112,7 +128,6 @@ pre {
   font-size: 0.75rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  
 }
 
 .debug-actions {

@@ -109,6 +109,15 @@ export class ChatBubble {
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.colorSpace = THREE.SRGBColorSpace;
 
+    // The canvas is resized on every message (see draw()). Mipmapping a
+    // texture that keeps changing size/aspect ratio is what caused every
+    // message after the first to render garbled — the GPU was reusing
+    // stale mip levels from the previous bubble's dimensions. This is a
+    // flat billboard sprite, so mipmaps buy nothing anyway; turn them off.
+    this.texture.generateMipmaps = false;
+    this.texture.minFilter = THREE.LinearFilter;
+    this.texture.magFilter = THREE.LinearFilter;
+
     this.material = new THREE.SpriteMaterial({
       map: this.texture,
       transparent: true,

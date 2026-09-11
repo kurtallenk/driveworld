@@ -56,7 +56,7 @@ export function createRoads(scene, terrain) {
   }
 
   const straight = [];
-  for (let z = -90; z <= 90; z += 2) {
+  for (let z = -170; z <= 170; z += 2) {
     straight.push({ x: 0, z });
   }
 
@@ -85,6 +85,54 @@ export function createRoads(scene, terrain) {
   }
 
   addRoute(dirt, 6, "dirt", 0xa5875c);
+
+  // Cross street north of the loop: a straight east-west road that
+  // intersects the main north-south road, extending the drivable area.
+  const crossNorth = [];
+  for (let x = -170; x <= 170; x += 2) {
+    crossNorth.push({ x, z: 100 });
+  }
+
+  addRoute(crossNorth, 10, "asphalt", 0x3a424a);
+
+  // Cross street south of the spawn pad: a second east-west intersection
+  // that turns the road layout into a connected grid.
+  const crossSouth = [];
+  for (let x = -150; x <= 150; x += 2) {
+    crossSouth.push({ x, z: -130 });
+  }
+
+  addRoute(crossSouth, 10, "asphalt", 0x3a424a);
+
+  // Curving connector: sweeps out from the east side of the loop toward
+  // the new neighborhood, giving the network real turns instead of only
+  // straight lines.
+  const connector = [];
+  for (let i = 0; i <= 120; i++) {
+    const t = i / 120;
+
+    connector.push({
+      x: 36 + t * 114,
+      z: Math.sin(t * Math.PI) * 45 + t * 10
+    });
+  }
+
+  addRoute(connector, 8, "asphalt", 0x3a424a);
+
+  // Neighborhood loop: a small residential circuit around the new house,
+  // reached via the connector road above. Kept well inside the map
+  // boundary walls (+-199).
+  const neighborhood = [];
+  for (let i = 0; i <= 120; i++) {
+    const angle = i / 120 * Math.PI * 2;
+
+    neighborhood.push({
+      x: 150 + Math.cos(angle) * 30,
+      z: 35 + Math.sin(angle) * 28
+    });
+  }
+
+  addRoute(neighborhood, 7, "asphalt", 0x3f474e);
 
   // Flat test pad covering the existing spawn location.
   const pad = new THREE.Mesh(
