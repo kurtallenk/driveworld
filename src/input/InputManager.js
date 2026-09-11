@@ -44,6 +44,7 @@ export class InputManager {
     this.v99Calibration = loadWheelCalibration();
     this.keys = new Set();
     this.resetRequested = false;
+    this.turretToggleRequested = false;
     this.devices = [];
 
     this.mode = "keyboard";
@@ -71,7 +72,7 @@ export class InputManager {
     this.restorePreference();
 
     const handled = new Set([
-      "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR"
+      "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR", "KeyF"
     ]);
 
     // Same convention as CameraManager: never hijack keys while the
@@ -93,6 +94,13 @@ export class InputManager {
       if (event.code === "KeyR" && !event.repeat) {
         this.resetRequested = true;
       }
+
+      // Edge-triggered: only the initial keydown sets this, so holding F
+      // never repeatedly toggles the turret (event.repeat guards against
+      // the browser's own key-repeat firing more keydown events).
+      if (event.code === "KeyF" && !event.repeat) {
+        this.turretToggleRequested = true;
+      }
     });
 
     window.addEventListener("keyup", (event) => {
@@ -105,6 +113,7 @@ export class InputManager {
     const clear = () => {
       this.keys.clear();
       this.resetRequested = false;
+      this.turretToggleRequested = false;
       this.disarm();
     };
 
@@ -343,6 +352,12 @@ export class InputManager {
   consumeReset() {
     const requested = this.resetRequested;
     this.resetRequested = false;
+    return requested;
+  }
+
+  consumeTurretToggle() {
+    const requested = this.turretToggleRequested;
+    this.turretToggleRequested = false;
     return requested;
   }
 

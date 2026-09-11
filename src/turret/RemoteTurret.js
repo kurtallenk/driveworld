@@ -1,0 +1,123 @@
+import * as THREE from "three";
+import { createTurretAssembly } from "./TurretModel.js";
+import { applyTurretPose } from "./TurretPose.js";
+import { TurretEffectsPool } from "./TurretEffects.js";
+import { TURRET_CONFIG, REMOTE_TURRET_ANCHOR } from "./TurretConfig.js";
+import { stepAngle, stepToward } from "./TurretMath.js";
+
+// ---------------------------------------------------------------------------
+// The remote counterpart to Turret.js. It never scans for targets, never
+// selects, never decides to fire -- it only reproduces what the network says
+// happened (deploy state, aim angles, and discrete fire events), using the
+// exact same mechanical pose function as the local turret so every player
+// sees the same transformation. See requirement: remote turrets replay
+// state/events locally rather than receiving per-part transforms.
+// ---------------------------------------------------------------------------
+
+const VISUAL_TRACER_LENGTH = 22;
+
+export class RemoteTurret {
+  constructor(vehicleRoot, scene, color) {
+    this.vehicleRoot = vehicleRoot;
+    this.scene = scene;
+
+    const assembly = createTurretAssembly(color ?? 0x9aa0a6);
+    this.parts = assembly.parts;
+
+    assembly.root.position.set(
+      REMOTE_TURRET_ANCHOR.x,
+      REMOTE_TURRET_ANCHOR.y,
+      REMOTE_TURRET_ANCHOR.z
+    );
+    vehicleRoot.add(assembly.root);
+
+    this.progress = 0;
+    this.targetProgress = 0;
+
+    this.yaw = 0;
+    this.pitch = 0;
+    this.targetYaw = 0;
+    this.targetPitch = 0;
+
+    this.lastFireSeq = 0;
+    this.recoil = 0;
+    this.flash = 0;
+
+    this.effects = new TurretEffectsPool(scene);
+
+    applyTurretPose(this.parts, {
+      progress: 0, yaw: 0, pitch: 0, recoil: 0, flash: 0
+    });
+  }
+
+  // Called whenever a fresh network sample for this player arrives.
+  // `turret` matches Turret.getNetworkState()'s shape; missing/malformed
+  // data (older protocol, packet loss) falls back to a safe default rather
+  // than throwing.
+  setNetworkState(turret) {
+    const deployed = turret?.state === "deployed" || turret?.state === "deploying";
+    this.targetProgress = deployed ? 1 : 0;
+
+    this.targetYaw = Number.isFinite(turret?.yaw) ? turret.yaw : 0;
+    this.targetPitch = Number.isFinite(turret?.pitch) ? turret.pitch : 0;
+
+    const fireSeq = Number.isInteger(turret?.fireSeq) ? turret.fireSeq : this.lastFireSeq;
+
+    if (fireSeq !== this.lastFireSeq) {
+      this.lastFireSeq = fireSeq;
+      this.playFireEffect();
+    }
+  }
+
+  playFireEffect() {
+    this.recoil = 1;
+    this.flash = 1;
+
+    this.parts.muzzleTip.updateWorldMatrix(true, false);
+    const origin = new THREE.Vector3();
+    this.parts.muzzleTip.getWorldPosition(origin);
+
+    const forward = new THREE.Vector3(0, 0, 1)
+      .applyQuaternion(this.parts.muzzleTip.getWorldQuaternion(new THREE.Quaternion()));
+
+    const endpoint = origin.clone().addScaledVector(forward, VISUAL_TRACER_LENGTH);
+
+    this.effects.spawnTracer(origin, endpoint);
+    this.effects.spawnImpact(endpoint);
+  }
+
+  update(dt) {
+    // Progress simply chases whatever the network last said, using the same
+    // durations as the local turret so both players see a comparable-speed
+    // transformation.
+    const duration = this.targetProgress > this.progress
+      ? TURRET_CONFIG.deployDuration
+      : TURRET_CONFIG.undeployDuration;
+
+    this.progress = stepToward(
+      this.progress,
+      this.targetProgress,
+      dt / duration
+    );
+
+    this.yaw = stepAngle(this.yaw, this.targetYaw, TURRET_CONFIG.rotationSpeed * dt);
+    this.pitch = stepToward(this.pitch, this.targetPitch, TURRET_CONFIG.elevationSpeed * dt);
+
+    this.recoil = Math.max(0, this.recoil - dt / TURRET_CONFIG.recoilDuration);
+    this.flash = Math.max(0, this.flash - dt / TURRET_CONFIG.muzzleFlashDuration);
+
+    applyTurretPose(this.parts, {
+      progress: this.progress,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      recoil: this.recoil,
+      flash: this.flash
+    });
+
+    this.effects.update(dt);
+  }
+
+  dispose() {
+    this.effects.dispose();
+  }
+}

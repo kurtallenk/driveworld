@@ -297,6 +297,14 @@ function initialSpawn(slot) {
   };
 }
 
+const TURRET_STATES = new Set([
+  "undeployed", "deploying", "deployed", "undeploying"
+]);
+
+function initialTurretState() {
+  return { state: "undeployed", yaw: 0, pitch: 0, fireSeq: 0 };
+}
+
 function initialState(spawn) {
   return {
     position: [...spawn.position],
@@ -310,7 +318,24 @@ function initialState(spawn) {
     rpm: 0,
     engineRunning: false,
     mode: "arcade",
-    paused: false
+    paused: false,
+    turret: initialTurretState()
+  };
+}
+
+// Only the turret's state/aim/fire-event fields are ever synchronized (see
+// client MultiplayerClient.sendState / RemoteTurret.js) -- never the
+// individual mechanical parts, so this validator stays this small.
+function validateTurret(raw) {
+  if (!raw || typeof raw !== "object") return initialTurretState();
+
+  return {
+    state: TURRET_STATES.has(raw.state) ? raw.state : "undeployed",
+    yaw: bounded(raw.yaw, -Math.PI, Math.PI),
+    pitch: bounded(raw.pitch, -Math.PI, Math.PI),
+    fireSeq: Number.isInteger(raw.fireSeq)
+      ? Math.max(0, Math.min(65535, raw.fireSeq))
+      : 0
   };
 }
 
@@ -388,7 +413,8 @@ function validateState(raw) {
     rpm: bounded(raw.rpm, 0, 12000),
     engineRunning: raw.engineRunning === true,
     mode: raw.mode === "manual" ? "manual" : "arcade",
-    paused: raw.paused === true
+    paused: raw.paused === true,
+    turret: validateTurret(raw.turret)
   };
 }
 

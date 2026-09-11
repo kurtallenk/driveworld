@@ -409,7 +409,14 @@ export class MultiplayerClient {
         rpm: manual ? drivetrain.rpm : 0,
         engineRunning: manual ? drivetrain.engineRunning : true,
         mode: game.drivingMode,
-        paused
+        paused,
+
+        // Turret state/events only -- remote clients reproduce the full
+        // mechanical animation locally from this (see RemoteTurret.js)
+        // rather than receiving per-part transforms every frame.
+        turret: game.turret?.getNetworkState() ?? {
+          state: "undeployed", yaw: 0, pitch: 0, fireSeq: 0
+        }
       }
     }));
   }

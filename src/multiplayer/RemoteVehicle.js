@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
 import { ChatBubble } from "./ChatBubble.js";
+import { RemoteTurret } from "../turret/RemoteTurret.js";
 import {
   COLLISION_GROUPS,
   REMOTE_VEHICLE_CANNON_MATERIAL
@@ -403,6 +404,7 @@ export class RemoteVehicle {
     this.root.add(this.label);
 
     this.chatBubble = new ChatBubble(this.root, BUBBLE_ANCHOR_Y);
+    this.turret = new RemoteTurret(this.root, this.scene, player.color);
 
     this.positionA = new THREE.Vector3();
     this.positionB = new THREE.Vector3();
@@ -442,6 +444,12 @@ export class RemoteVehicle {
     }
 
     this.lastState = state;
+
+    // Turret is state/event-driven, not interpolated like position -- this
+    // also covers late joiners, since `state` here is the player's full
+    // current state (including turret) whether it arrived via "welcome",
+    // "join", or a regular "snapshot".
+    this.turret.setNetworkState(state.turret);
   }
 
   // Called by MultiplayerClient when a `chat` message arrives for this
@@ -480,7 +488,12 @@ export class RemoteVehicle {
   update(now, dt) {
     this.chatBubble.update(now);
 
-    if (!this.samples.length) return;
+    if (!this.samples.length) {
+      // No network samples yet (e.g. the very first frame): still animate
+      // the turret in place so it isn't stuck on a stale pose.
+      this.turret.update(dt);
+      return;
+    }
 
     const renderTime = now - INTERPOLATION_DELAY;
 
@@ -540,10 +553,16 @@ export class RemoteVehicle {
 
     this.brakeMaterial.emissiveIntensity =
       state.brake > 0.1 ? 1.5 : 0.25;
+
+    // Runs after this.root's position/quaternion are updated above so the
+    // turret's own world-matrix math (muzzle position for fire effects)
+    // reflects this frame's vehicle transform.
+    this.turret.update(dt);
   }
 
   dispose() {
     this.chatBubble.dispose();
+    this.turret.dispose();
     this.scene.remove(this.root);
 
     if (this.body) {

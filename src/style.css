@@ -105,6 +105,14 @@ button:disabled {
   margin-bottom: 0.4rem;
 }
 
+#turret-status {
+  display: block;
+  color: #6fd0ff;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.4rem;
+}
+
 small {
   display: block;
   line-height: 1.6;

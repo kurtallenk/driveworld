@@ -14,6 +14,8 @@ import { VehicleFeedback } from "../vehicle/VehicleFeedback.js";
 import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
 import { MobileControls } from "../ui/MobileControls.js";
 import { DeliverySystem } from "../gameplay/DeliverySystem.js";
+import { Turret } from "../turret/Turret.js";
+import { TargetSystem } from "../turret/TargetSystem.js";
 
 const PLAYER_COLORS = [
   "#ef5350", "#4285f4", "#58b76b", "#f5ce47",
@@ -109,6 +111,17 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     this.vehicle = new Vehicle(
       this.scene, this.vehiclePhysics, this.player.vehicleColor
     );
+
+    this.targetSystem = new TargetSystem(
+      this.scene, this.world.terrain, this.world.roads
+    );
+
+    this.turret = new Turret(
+      this.vehicle.root, this.scene, this.audio, this.player.vehicleColor
+    );
+
+    this.turretStatusElement = document.querySelector("#turret-status");
+
     this.input = new InputManager();
     this.controller = new ArcadeController();
 
@@ -336,6 +349,7 @@ if (mobileButton) {
 
   this.input.keys.clear();
   this.input.resetRequested = false;
+  this.input.turretToggleRequested = false;
   this.input.disarm();
 
   if (this.audio.context) {
@@ -365,6 +379,10 @@ if (mobileButton) {
     this.accumulator += dt;
 
     const input = this.input.sample();
+
+    if (this.input.consumeTurretToggle()) {
+      this.turret.toggle();
+    }
 
     if (this.input.consumeReset()) {
         this.vehiclePhysics.reset();
@@ -423,6 +441,9 @@ if (mobileButton) {
     this.vehicle.sync();
     this.deliverySystem.update(this.vehiclePhysics.body.position, dt);
     this.world.destructibles.update(dt);
+
+    this.targetSystem.update(dt, this.vehiclePhysics.body.position);
+    this.turret.update(dt, this.targetSystem);
 
 const speed = this.vehiclePhysics.body.velocity.length();
 const manual = this.drivingMode === "manual";
@@ -557,6 +578,10 @@ this.renderer.render(this.scene, this.camera);
 this.deliveryStatusElement.textContent = this.deliverySystem.statusText;
 this.deliveryCountElement.textContent =
   `Deliveries: ${this.deliverySystem.deliveries} · Score: ${this.deliverySystem.score}`;
+
+if (this.turretStatusElement) {
+  this.turretStatusElement.textContent = this.turret.statusText;
+}
 
 this.debugElement.textContent = JSON.stringify({
   activeInput: this.input.activeSource,
