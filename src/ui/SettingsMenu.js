@@ -10,7 +10,8 @@ export class SettingsMenu {
     // Move existing DOM nodes. Their registered listeners are preserved.
     this.moveButtonGroup("menu-controls", [
       "enable-v99",
-      "use-keyboard"
+      "use-keyboard",
+      "use-mobile"
     ]);
 
     this.moveElement("control-status", "menu-controls");
@@ -67,6 +68,12 @@ export class SettingsMenu {
     // gameplay while the modal menu is open.
     window.addEventListener("keydown", event => {
       if (event.code === "Escape" && !event.repeat) {
+        // The chat input handles its own Escape (unfocus/close chat)
+        // instead of this toggling the settings menu underneath it.
+        if (document.activeElement?.dataset?.chatInput !== undefined) {
+          return;
+        }
+
         event.preventDefault();
         event.stopImmediatePropagation();
 

@@ -56,14 +56,36 @@ export class InputManager {
     this.armedIndex = null;
     this.readySince = null;
 
+    // Mutated directly by MobileControls; sample() reads it while
+    // mode === "mobile". A touch H-shifter reading is deterministic
+    // (no debounce ambiguity like real hardware), so it is always valid.
+    this.mobileState = {
+      steering: 0,
+      throttle: 0,
+      brake: 0,
+      clutch: 0,
+      handbrake: 0
+    };
+    this.mobileGear = 0;
+
     this.restorePreference();
 
     const handled = new Set([
       "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR"
     ]);
 
+    // Same convention as CameraManager: never hijack keys while the
+    // player is typing into chat or another text field.
+    const isEditingTarget = element =>
+      element instanceof HTMLElement &&
+      (
+        element.isContentEditable ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName)
+      );
+
     window.addEventListener("keydown", (event) => {
       if (!handled.has(event.code)) return;
+      if (isEditingTarget(event.target)) return;
 
       event.preventDefault();
       this.keys.add(event.code);
@@ -74,6 +96,8 @@ export class InputManager {
     });
 
     window.addEventListener("keyup", (event) => {
+      // Always release, even if focus moved to a text field mid-press,
+      // so a key can never get stuck "held" in this.keys.
       if (handled.has(event.code)) event.preventDefault();
       this.keys.delete(event.code);
     });
@@ -171,6 +195,32 @@ export class InputManager {
     this.status = "Keyboard controls active";
   }
 
+  enableMobile() {
+    this.mode = "mobile";
+    this.keys.clear();
+    this.disarm();
+    this.mobileState = {
+      steering: 0, throttle: 0, brake: 0, clutch: 0, handbrake: 0
+    };
+    this.mobileGear = 0;
+    this.activeSource = "Mobile Touch";
+    this.status = "Touch controls active";
+  }
+
+  // Whether the current input source can drive Manual/Simulation mode
+  // (i.e. it can provide clutch + H-shifter readings).
+  isManualCapable() {
+    return this.mode === "v99" || this.mode === "mobile";
+  }
+
+  setMobileInput(partial) {
+    Object.assign(this.mobileState, partial);
+  }
+
+  setMobileGear(gear) {
+    this.mobileGear = gear;
+  }
+
   disarm() {
     this.armed = false;
     this.armedIndex = null;
@@ -192,6 +242,32 @@ export class InputManager {
     if (this.mode === "keyboard") {
       this.activeSource = "Keyboard";
       return this.keyboardInput();
+    }
+
+    if (this.mode === "mobile") {
+      // Same "unattended input on an unfocused page" guard as the wheel.
+      if (document.hidden || !document.hasFocus()) {
+        this.activeSource = "None — waiting";
+        this.status = "Touch controls paused while the page is unfocused";
+        this.shifter = null;
+        return normalizeInput();
+      }
+
+      this.activeSource = "Mobile Touch";
+      this.status = "Touch controls active";
+
+      this.shifter = {
+        type: "H_PATTERN",
+        detected: true,
+        valid: true,
+        gear: this.mobileGear,
+        reason: null
+      };
+
+      return normalizeInput({
+        ...this.mobileState,
+        gear: this.mobileGear
+      });
     }
 
     // Do not apply unattended gamepad input to an unfocused page.

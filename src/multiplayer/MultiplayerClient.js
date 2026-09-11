@@ -1,9 +1,17 @@
 import * as THREE from "three";
 import { RemoteVehicle } from "./RemoteVehicle.js";
+import { ChatBubble } from "./ChatBubble.js";
+
+// Clearance above the local car's roofline. The local vehicle has no
+// nameplate sprite (the driver doesn't need to read their own name), so
+// this sits directly above the bodywork instead of above a label.
+const LOCAL_BUBBLE_ANCHOR_Y = 1.85;
 
 export class MultiplayerClient {
-  constructor(game) {
+  constructor(game, playerName = "") {
     this.game = game;
+    this.playerName = playerName;
+    this.chatPanel = null;
 
     this.socket = null;
     this.selfId = null;
@@ -19,6 +27,11 @@ export class MultiplayerClient {
 
     this.createStatusPanel();
     this.collectPaintMaterials();
+
+    this.localBubble = new ChatBubble(
+      this.game.vehicle.root,
+      LOCAL_BUBBLE_ANCHOR_Y
+    );
 
     this.connect();
 
@@ -125,6 +138,10 @@ export class MultiplayerClient {
     const url = new URL("/multiplayer", window.location.href);
     url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
+    if (this.playerName) {
+      url.searchParams.set("name", this.playerName);
+    }
+
     this.status.textContent = "Connecting to multiplayer…";
 
     const socket = new WebSocket(url);
@@ -210,14 +227,16 @@ export class MultiplayerClient {
       }
 
       this.status.textContent =
-        `ONLINE · Driver ${this.selfId.slice(0, 6)}`;
+        `ONLINE · ${message.self.name}`;
 
       this.updateCount();
+      this.chatPanel?.addSystemMessage(`You joined as ${message.self.name}.`);
       return;
     }
 
     if (message.type === "join") {
       this.addPlayer(message.player);
+      this.chatPanel?.addSystemMessage(`${message.player.name} joined the game.`);
       return;
     }
 
@@ -225,6 +244,7 @@ export class MultiplayerClient {
       const remote = this.remotes.get(message.id);
 
       if (remote) {
+        this.chatPanel?.addSystemMessage(`${remote.name} left the game.`);
         remote.dispose();
         this.remotes.delete(message.id);
       }
@@ -238,6 +258,20 @@ export class MultiplayerClient {
 
       for (const player of message.players) {
         this.remotes.get(player.id)?.pushState(player.state, now);
+      }
+
+      return;
+    }
+
+    if (message.type === "chat") {
+      const isLocal = message.playerId === this.selfId;
+
+      this.chatPanel?.addChatMessage(message, isLocal);
+
+      if (isLocal) {
+        this.localBubble.show(message.message);
+      } else {
+        this.remotes.get(message.playerId)?.showMessage(message.message);
       }
 
       return;
@@ -356,6 +390,27 @@ export class MultiplayerClient {
     }));
   }
 
+  sendChat(text) {
+    if (
+      !this.running ||
+      !this.selfId ||
+      this.socket?.readyState !== WebSocket.OPEN
+    ) {
+      return false;
+    }
+
+    const trimmed = typeof text === "string" ? text.trim() : "";
+
+    if (!trimmed) return false;
+
+    this.socket.send(JSON.stringify({
+      type: "chat",
+      message: trimmed.slice(0, 200)
+    }));
+
+    return true;
+  }
+
   animate(now) {
     const dt = Math.min(
       Math.max((now - this.lastRenderTime) / 1000, 0),
@@ -368,12 +423,14 @@ export class MultiplayerClient {
       remote.update(now, dt);
     }
 
+    this.localBubble.update(now);
+
     this.animationId = requestAnimationFrame(this.animate);
   }
 
   updateCount() {
     this.count.textContent =
-      `Players: ${this.remotes.size + (this.selfId ? 1 : 0)} / 20`;
+      `Players: ${this.remotes.size + (this.selfId ? 1 : 0)} / 8`;
   }
 
   clearRemotes() {
@@ -394,6 +451,7 @@ export class MultiplayerClient {
 
     this.socket?.close(1000, "Game closed");
     this.clearRemotes();
+    this.localBubble.dispose();
     this.panel.remove();
   }
 }

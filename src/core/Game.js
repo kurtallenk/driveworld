@@ -12,28 +12,11 @@ import { loadPresentationSettings,savePresentationSettings } from "./Presentatio
 import { SettingsMenu } from "../ui/SettingsMenu.js";
 import { VehicleFeedback } from "../vehicle/VehicleFeedback.js";
 import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
+import { MobileControls } from "../ui/MobileControls.js";
 
 const PLAYER_COLORS = [
-  "#ef5350", // 1 - Red
-  "#4285f4", // 2 - Blue
-  "#58b76b", // 3 - Green
-  "#f5ce47", // 4 - Yellow
-  "#aa70d6", // 5 - Purple
-  "#f29b43", // 6 - Orange
-  "#ee83bd", // 7 - Pink
-  "#50cad5", // 8 - Cyan
-  "#8d6e63", // 9 - Brown
-  "#78909c", // 10 - Blue Gray
-  "#26a69a", // 11 - Teal
-  "#7e57c2", // 12 - Deep Purple
-  "#ec407a", // 13 - Rose
-  "#66bb6a", // 14 - Light Green
-  "#29b6f6", // 15 - Light Blue
-  "#ffa726", // 16 - Amber
-  "#ab47bc", // 17 - Violet
-  "#26c6da", // 18 - Turquoise
-  "#d4e157", // 19 - Lime
-  "#ff7043"  // 20 - Deep Orange
+  "#ef5350", "#4285f4", "#58b76b", "#f5ce47",
+  "#aa70d6", "#f29b43", "#ee83bd", "#50cad5"
 ];
 
 const FIXED_DT = 1 / 60;
@@ -238,17 +221,29 @@ document.querySelectorAll("[data-presentation]").forEach(slider => {
 
 const enableV99Button = document.querySelector("#enable-v99");
 const keyboardButton = document.querySelector("#use-keyboard");
+const mobileButton = document.querySelector("#use-mobile");
 
 enableV99Button.disabled = false;
 keyboardButton.disabled = false;
 
 enableV99Button.addEventListener("click", () => {
   this.input.enableV99();
+  this.mobileControls?.setActive(false);
 });
 
 keyboardButton.addEventListener("click", () => {
   this.input.useKeyboard();
+  this.mobileControls?.setActive(false);
 });
+
+if (mobileButton) {
+  mobileButton.disabled = false;
+
+  mobileButton.addEventListener("click", () => {
+    this.input.enableMobile();
+    this.mobileControls?.setActive(true);
+  });
+}
 
     this.speedElement = document.querySelector("#speed");
     this.gearElement = document.querySelector("#gear");
@@ -273,6 +268,16 @@ keyboardButton.addEventListener("click", () => {
   this.input,
   this.menu
 );
+
+    this.mobileControls = new MobileControls(this.input);
+
+    // Touch-primary devices default straight into touch controls;
+    // desktop with a mouse/trackpad keeps the existing keyboard default.
+    if (this.mobileControls.isTouchDevice) {
+      this.input.enableMobile();
+      this.mobileControls.setActive(true);
+      this.mobileControls.setDrivingMode(this.drivingMode);
+    }
   }
 
   setDrivingMode(mode) {
@@ -282,9 +287,9 @@ keyboardButton.addEventListener("click", () => {
     return;
   }
 
-  if (mode === "manual" && this.input.mode !== "v99") {
+  if (mode === "manual" && !this.input.isManualCapable()) {
     this.drivingStatusElement.textContent =
-      "Enable your V99 profile before selecting Realistic Prototype.";
+      "Enable your V99 profile or touch controls before selecting Realistic Prototype.";
     return;
   }
 
@@ -296,6 +301,8 @@ keyboardButton.addEventListener("click", () => {
   this.drivingStatusElement.textContent = mode === "manual"
     ? "Manual selected. Activate wheel, select neutral, then start engine."
     : "Arcade selected.";
+
+  this.mobileControls?.setDrivingMode(mode);
 }
 
   start() {
@@ -352,7 +359,11 @@ keyboardButton.addEventListener("click", () => {
     }
 
     while (this.accumulator >= FIXED_DT) {
-  const wheelActive = this.input.activeSource === "PXN V99";
+  // "wheelActive" here means "a source capable of clutch + H-shifter
+  // input is currently live" — the physical wheel or touch controls.
+  const wheelActive =
+    this.input.activeSource === "PXN V99" ||
+    this.input.activeSource === "Mobile Touch";
   const signedSpeed = this.vehiclePhysics.signedSpeed;
 
   if (this.engineStartRequested) {

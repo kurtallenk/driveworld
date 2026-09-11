@@ -12,8 +12,12 @@ const PORT = Number(process.env.PORT || 3001);
 // Public hosting needs to listen on all network interfaces.
 const HOST = process.env.HOST || "0.0.0.0";
 
-const MAX_PLAYERS = 20;
+const MAX_PLAYERS = 8;
 const SNAPSHOT_RATE = 15;
+const MAX_NAME_LENGTH = 16;
+const MAX_CHAT_LENGTH = 200;
+const CHAT_WINDOW_MS = 4000;
+const CHAT_LIMIT_PER_WINDOW = 6;
 
 const SERVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIRECTORY = path.resolve(SERVER_DIRECTORY, "../dist");
@@ -60,6 +64,34 @@ const MIME_TYPES = {
 };
 
 const players = new Map();
+
+// Strip control characters and bidi/zero-width tricks; the client-sent
+// name is never trusted beyond this sanitization.
+function sanitizeName(raw) {
+  if (typeof raw !== "string") return null;
+
+  const cleaned = raw
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E<>]/g, "")
+    .trim()
+    .slice(0, MAX_NAME_LENGTH);
+
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function fallbackName(id) {
+  return `Racer${id.slice(0, 4)}`;
+}
+
+function sanitizeChatMessage(raw) {
+  if (typeof raw !== "string") return null;
+
+  const cleaned = raw
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .trim()
+    .slice(0, MAX_CHAT_LENGTH);
+
+  return cleaned.length > 0 ? cleaned : null;
+}
 
 function textResponse(response, status, message) {
   response.writeHead(status, {
@@ -278,6 +310,7 @@ function initialState(spawn) {
 function publicPlayer(player) {
   return {
     id: player.id,
+    name: player.name,
     color: player.color,
     spawn: player.spawn,
     state: player.state
@@ -336,7 +369,7 @@ function validateState(raw) {
   };
 }
 
-wss.on("connection", ws => {
+wss.on("connection", (ws, request) => {
   ws.on("error", error => {
     console.warn("WebSocket error:", error.message);
   });
@@ -359,17 +392,30 @@ wss.on("connection", ws => {
   while (usedSlots.has(slot)) slot++;
 
   const spawn = initialSpawn(slot);
+  const id = randomUUID();
+
+  let requestedName = null;
+
+  try {
+    const { searchParams } = new URL(request.url, "http://localhost");
+    requestedName = sanitizeName(searchParams.get("name"));
+  } catch {
+    requestedName = null;
+  }
 
   const player = {
-    id: randomUUID(),
+    id,
     ws,
     slot,
+    name: requestedName || fallbackName(id),
     color: COLORS[slot],
     spawn,
     state: initialState(spawn),
     lastSequence: -1,
     rateWindow: Date.now(),
-    messageCount: 0
+    messageCount: 0,
+    chatWindow: Date.now(),
+    chatCount: 0
   };
 
   ws.isAlive = true;
@@ -425,21 +471,54 @@ wss.on("connection", ws => {
       return;
     }
 
-    if (message?.type !== "state") return;
+    if (message?.type === "state") {
+      if (
+        !Number.isSafeInteger(message.sequence) ||
+        message.sequence <= player.lastSequence
+      ) {
+        return;
+      }
 
-    if (
-      !Number.isSafeInteger(message.sequence) ||
-      message.sequence <= player.lastSequence
-    ) {
+      const state = validateState(message.state);
+
+      if (!state) return;
+
+      player.lastSequence = message.sequence;
+      player.state = state;
       return;
     }
 
-    const state = validateState(message.state);
+    if (message?.type === "chat") {
+      const chatNow = Date.now();
 
-    if (!state) return;
+      if (chatNow - player.chatWindow >= CHAT_WINDOW_MS) {
+        player.chatWindow = chatNow;
+        player.chatCount = 0;
+      }
 
-    player.lastSequence = message.sequence;
-    player.state = state;
+      player.chatCount++;
+
+      // Silently drop messages over the burst limit instead of
+      // disconnecting; the generic message-rate check above already
+      // guards against outright flooding.
+      if (player.chatCount > CHAT_LIMIT_PER_WINDOW) return;
+
+      const text = sanitizeChatMessage(message.message);
+
+      if (!text) return;
+
+      // The server, never the client, is the source of truth for who
+      // sent a message and under what name.
+      broadcast({
+        type: "chat",
+        playerId: player.id,
+        playerName: player.name,
+        message: text,
+        timestamp: Date.now()
+      });
+
+      return;
+    }
   });
 
   ws.on("close", () => {

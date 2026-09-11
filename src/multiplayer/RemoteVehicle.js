@@ -1,11 +1,20 @@
 import * as THREE from "three";
+import { ChatBubble } from "./ChatBubble.js";
 
 const INTERPOLATION_DELAY = 120;
+
+// A little clearance above the top edge of the nameplate sprite
+// (label.position.y=2, label.scale.y=0.525) so the bubble tail never
+// overlaps the player's name.
+const BUBBLE_ANCHOR_Y = 2.35;
 
 export class RemoteVehicle {
   constructor(scene, player) {
     this.scene = scene;
     this.id = player.id;
+    this.name = typeof player.name === "string" && player.name.length > 0
+      ? player.name
+      : `Driver ${player.id.slice(0, 6)}`;
 
     this.root = new THREE.Group();
     scene.add(this.root);
@@ -111,9 +120,21 @@ export class RemoteVehicle {
     context.fillStyle = "#09131ed9";
     context.fillRect(0, 0, 512, 96);
     context.fillStyle = "#ffffff";
-    context.font = "bold 40px sans-serif";
     context.textAlign = "center";
-    context.fillText(`Driver ${player.id.slice(0, 6)}`, 256, 62);
+
+    // Shrink the font for longer names so it never overflows the label.
+    let fontSize = 40;
+    context.font = `bold ${fontSize}px sans-serif`;
+
+    while (
+      context.measureText(this.name).width > 460 &&
+      fontSize > 18
+    ) {
+      fontSize -= 2;
+      context.font = `bold ${fontSize}px sans-serif`;
+    }
+
+    context.fillText(this.name, 256, 62);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -128,6 +149,8 @@ export class RemoteVehicle {
     this.label.position.set(0, 2, 0);
     this.label.scale.set(2.8, 0.525, 1);
     this.root.add(this.label);
+
+    this.chatBubble = new ChatBubble(this.root, BUBBLE_ANCHOR_Y);
 
     this.positionA = new THREE.Vector3();
     this.positionB = new THREE.Vector3();
@@ -169,7 +192,16 @@ export class RemoteVehicle {
     this.lastState = state;
   }
 
+  // Called by MultiplayerClient when a `chat` message arrives for this
+  // player's id. Kept separate from network parsing so RemoteVehicle
+  // knows nothing about the wire format.
+  showMessage(text) {
+    this.chatBubble.show(text);
+  }
+
   update(now, dt) {
+    this.chatBubble.update(now);
+
     if (!this.samples.length) return;
 
     const renderTime = now - INTERPOLATION_DELAY;
@@ -233,6 +265,7 @@ export class RemoteVehicle {
   }
 
   dispose() {
+    this.chatBubble.dispose();
     this.scene.remove(this.root);
 
     const geometries = new Set();
