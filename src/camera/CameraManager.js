@@ -91,6 +91,18 @@ export class CameraManager {
     this.lookRotation = new THREE.Quaternion();
     this.lookEuler = new THREE.Euler(0, 0, 0, "YXZ");
 
+    // Third-person orbit: reuses the same yaw/pitch smoothing state as
+    // driver-mode look-around above, just applied on top of the chase
+    // camera's offset instead of the driver's look direction. A plain
+    // {position, quaternion} stand-in (not a real Object3D) is all
+    // ThirdPersonCamera.update() actually reads.
+    this.orbitEuler = new THREE.Euler(0, 0, 0, "YXZ");
+    this.orbitQuaternion = new THREE.Quaternion();
+    this.chaseTarget = {
+      position: new THREE.Vector3(),
+      quaternion: new THREE.Quaternion()
+    };
+
     this.direction = new THREE.Vector3();
     this.target = new THREE.Vector3();
 
@@ -134,7 +146,11 @@ export class CameraManager {
     });
 
     this.canvas.addEventListener("pointerdown", event => {
-      if (event.button !== 2 || this.mode !== "driver") return;
+      // Right button drives camera rotation in both driver view (look
+      // around the cabin) and third-person view (orbit the chase camera).
+      // Left button is handled separately below, as a reset/center tap
+      // rather than a drag.
+      if (event.button !== 2) return;
 
       event.preventDefault();
 
@@ -147,13 +163,7 @@ export class CameraManager {
     });
 
     this.canvas.addEventListener("pointermove", event => {
-      if (
-        !this.dragging ||
-        this.mode !== "driver" ||
-        event.pointerId !== this.pointerId
-      ) {
-        return;
-      }
+      if (!this.dragging || event.pointerId !== this.pointerId) return;
 
       const deltaX = event.clientX - this.lastPointerX;
       const deltaY = event.clientY - this.lastPointerY;
@@ -170,17 +180,24 @@ export class CameraManager {
 
       // Looking along chassis +Z:
       // negative yaw looks toward the driver's right.
-      this.targetYaw = THREE.MathUtils.clamp(
-        this.targetYaw - deltaX * sensitivity,
-        -1.4,
-        1.4
-      );
+      const rawYaw = this.targetYaw - deltaX * sensitivity;
+      const rawPitch = this.targetPitch + deltaY * sensitivity;
 
-      this.targetPitch = THREE.MathUtils.clamp(
-        this.targetPitch + deltaY * sensitivity,
-        -0.55,
-        0.55
-      );
+      if (this.mode === "driver") {
+        this.targetYaw = THREE.MathUtils.clamp(rawYaw, -1.4, 1.4);
+        this.targetPitch = THREE.MathUtils.clamp(rawPitch, -0.55, 0.55);
+      } else {
+        // Third-person orbit: yaw can go all the way around the car
+        // (wrapped to keep the underlying number from growing forever
+        // across a long drag), pitch is limited so the camera can't flip
+        // over the roof or dip through the ground.
+        this.targetYaw = THREE.MathUtils.euclideanModulo(
+          rawYaw + Math.PI,
+          Math.PI * 2
+        ) - Math.PI;
+
+        this.targetPitch = THREE.MathUtils.clamp(rawPitch, -0.55, 0.75);
+      }
     });
 
     this.canvas.addEventListener("pointerup", event => {
@@ -198,6 +215,41 @@ export class CameraManager {
       this.pointerId = null;
     });
 
+    // Left click resets/centers the camera. The canvas has no other left
+    // click behavior (shooting, interaction, etc. don't exist in this
+    // game), so a plain click is safe to repurpose -- but a *drag* that
+    // happens to start with the left button (e.g. a mis-click) should not
+    // snap the view, so this only fires on a clean down+up with barely any
+    // pointer movement in between, same idea as a UI button's click.
+    this.canvas.addEventListener("pointerdown", event => {
+      if (event.button !== 0) return;
+
+      this.leftClickStartX = event.clientX;
+      this.leftClickStartY = event.clientY;
+    });
+
+    this.canvas.addEventListener("pointerup", event => {
+      if (
+        event.button !== 0 ||
+        this.leftClickStartX === undefined
+      ) {
+        return;
+      }
+
+      const moved = Math.hypot(
+        event.clientX - this.leftClickStartX,
+        event.clientY - this.leftClickStartY
+      );
+
+      this.leftClickStartX = undefined;
+      this.leftClickStartY = undefined;
+
+      if (moved < 6) this.centerLook();
+    });
+
+    // Kept in addition to the click-based reset above: double-click has
+    // always centered the driver-mode look, and some players' muscle
+    // memory expects it.
     this.canvas.addEventListener("dblclick", event => {
       if (event.button !== 0 || this.mode !== "driver") return;
       this.centerLook();
@@ -420,7 +472,25 @@ export class CameraManager {
         -boundedNumber(this.settings.cameraDistance, 7.5, 4, 14)
       );
 
-      this.chase.update(vehicle.root, dt);
+      // Smooth the right-click-drag orbit toward its target, same
+      // exponential-approach shape used for driver-mode look-around below.
+      const orbitBlend = 1 - Math.exp(-10 * dt);
+      this.yaw += (this.targetYaw - this.yaw) * orbitBlend;
+      this.pitch += (this.targetPitch - this.pitch) * orbitBlend;
+
+      this.orbitEuler.set(this.pitch, this.yaw, 0);
+      this.orbitQuaternion.setFromEuler(this.orbitEuler);
+
+      // Orbit is applied on top of the car's own heading rather than
+      // replacing it, so releasing right click (and resetting via left
+      // click) always settles back onto the normal chase view centered
+      // behind the car.
+      this.chaseTarget.position.copy(vehicle.root.position);
+      this.chaseTarget.quaternion
+        .copy(vehicle.root.quaternion)
+        .multiply(this.orbitQuaternion);
+
+      this.chase.update(this.chaseTarget, dt);
       this.obstacleAvoidance.resolve(this.camera, vehicle);
       this.camera.lookAt(this.chase.lookPoint);
       return;
