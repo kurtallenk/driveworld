@@ -1,5 +1,19 @@
 import * as THREE from "three";
+import * as CANNON from "cannon-es";
 import { ChatBubble } from "./ChatBubble.js";
+import {
+  COLLISION_GROUPS,
+  REMOTE_VEHICLE_CANNON_MATERIAL
+} from "../vehicle/CollisionGroups.js";
+
+// Matches the local player's own chassis collider (VehiclePhysics.js) so a
+// bump against a remote car and a bump against the local car's own shape
+// feel the same size. Remote vehicles have no real physics simulation of
+// their own (their position/rotation come entirely from network
+// snapshots) -- this box only exists so the LOCAL player's dynamic body
+// has something solid to push against. See MultiplayerClient.syncPhysics.
+const COLLIDER_HALF_EXTENTS = new CANNON.Vec3(0.9, 0.3, 2);
+const COLLIDER_OFFSET = new CANNON.Vec3(0, 0.15, 0);
 
 const INTERPOLATION_DELAY = 120;
 
@@ -226,7 +240,7 @@ function createWheelVisual(geo, mat) {
 // ---------------------------------------------------------------------------
 
 export class RemoteVehicle {
-  constructor(scene, player) {
+  constructor(scene, player, physics = null) {
     this.scene = scene;
     this.id = player.id;
     this.name = typeof player.name === "string" && player.name.length > 0
@@ -238,6 +252,39 @@ export class RemoteVehicle {
 
     this.samples = [];
     this.lastState = player.state;
+
+    // Kinematic: driven directly by syncPhysics() from network state, never
+    // moved by forces/gravity/solver impulses itself, but still solid to
+    // the local player's dynamic chassis body. `physics` is optional so
+    // this class still works if it's ever used without a physics world.
+    this.physics = physics;
+    this.body = null;
+
+    if (physics) {
+      this.body = new CANNON.Body({
+        mass: 0,
+        type: CANNON.Body.KINEMATIC,
+        material: REMOTE_VEHICLE_CANNON_MATERIAL,
+        collisionFilterGroup: COLLISION_GROUPS.REMOTE,
+        // Only the local vehicle needs to feel this body. It deliberately
+        // does not collide with the world (terrain/buildings/trees) or
+        // with other remotes -- those interactions have no visible owner
+        // to react to them, since this box isn't simulated.
+        collisionFilterMask: COLLISION_GROUPS.VEHICLE
+      });
+
+      this.body.addShape(new CANNON.Box(COLLIDER_HALF_EXTENTS), COLLIDER_OFFSET);
+
+      if (player.state?.position) {
+        this.body.position.set(...player.state.position);
+      }
+
+      if (player.state?.rotation) {
+        this.body.quaternion.set(...player.state.rotation);
+      }
+
+      physics.addBody(this.body);
+    }
 
     const mat = createMaterials(player.color);
     this.paint = mat.paint;
@@ -404,6 +451,32 @@ export class RemoteVehicle {
     this.chatBubble.show(text);
   }
 
+  // Called once per physics tick by Game (via MultiplayerClient), just
+  // before physics.step(). Copies the already-interpolated visual
+  // transform (computed in update() below, on the render loop) onto the
+  // kinematic collider. A frame of lag between the two loops is
+  // imperceptible and far simpler than merging them.
+  syncPhysics() {
+    if (!this.body) return;
+
+    this.body.position.set(
+      this.root.position.x,
+      this.root.position.y,
+      this.root.position.z
+    );
+
+    this.body.quaternion.set(
+      this.root.quaternion.x,
+      this.root.quaternion.y,
+      this.root.quaternion.z,
+      this.root.quaternion.w
+    );
+
+    this.body.velocity.setZero();
+    this.body.angularVelocity.setZero();
+    this.body.aabbNeedsUpdate = true;
+  }
+
   update(now, dt) {
     this.chatBubble.update(now);
 
@@ -472,6 +545,11 @@ export class RemoteVehicle {
   dispose() {
     this.chatBubble.dispose();
     this.scene.remove(this.root);
+
+    if (this.body) {
+      this.physics?.removeBody(this.body);
+      this.body = null;
+    }
 
     const geometries = new Set();
     const materials = new Set();

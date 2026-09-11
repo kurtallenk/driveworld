@@ -4,6 +4,7 @@ import * as CANNON from "cannon-es";
 import { createTerrain } from "./Terrain.js";
 import { createRoads } from "./Roads.js";
 import { createHouse } from "./Buildings.js";
+import { createDestructibles } from "./Destructibles.js";
 
 export function createWorld(scene, physics) {
   scene.background = new THREE.Color("#a8cee3");
@@ -172,5 +173,7 @@ export function createWorld(scene, physics) {
 
   scene.add(trunks, crowns);
 
-  return { terrain, roads };
+  const destructibles = createDestructibles(scene, physics, terrain, roads);
+
+  return { terrain, roads, destructibles };
 }

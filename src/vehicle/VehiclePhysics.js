@@ -1,11 +1,17 @@
 import * as CANNON from "cannon-es";
+import {
+  COLLISION_GROUPS,
+  VEHICLE_CANNON_MATERIAL,
+  VEHICLE_VEHICLE_CONTACT
+} from "./CollisionGroups.js";
 
 export class VehiclePhysics {
   constructor(world) {
     this.body = new CANNON.Body({
       mass: 1050,
       linearDamping: 0.025,
-      angularDamping: 0.35
+      angularDamping: 0.35,
+      material: VEHICLE_CANNON_MATERIAL
     });
 
     // The collider sits above the center of mass for prototype stability.
@@ -13,6 +19,14 @@ export class VehiclePhysics {
       new CANNON.Box(new CANNON.Vec3(0.9, 0.3, 2)),
       new CANNON.Vec3(0, 0.15, 0)
     );
+
+    // Collide with the static world (terrain/buildings/trees/etc, all left
+    // at cannon-es's default group) and with other players' remote proxy
+    // bodies. See CollisionGroups.js for why this needs its own group
+    // rather than the default "collide with everything" mask.
+    this.body.collisionFilterGroup = COLLISION_GROUPS.VEHICLE;
+    this.body.collisionFilterMask =
+      COLLISION_GROUPS.WORLD | COLLISION_GROUPS.REMOTE;
 
     this.vehicle = new CANNON.RaycastVehicle({
       chassisBody: this.body,
@@ -47,6 +61,13 @@ export class VehiclePhysics {
     }
 
     this.vehicle.addToWorld(world);
+
+    // Only one local vehicle ever exists, but guard anyway in case a
+    // future scene reload constructs a second one against the same world.
+    if (!world.contactmaterials.includes(VEHICLE_VEHICLE_CONTACT)) {
+      world.addContactMaterial(VEHICLE_VEHICLE_CONTACT);
+    }
+
     this.forward = new CANNON.Vec3();
     this.reset();
   }

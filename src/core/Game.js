@@ -99,6 +99,11 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
 
   this.audio.playImpact(impactSpeed);
   this.cameraRig.notifyImpact(impactSpeed);
+
+  // Destructible map objects tag their cannon-es body with `onImpact`
+  // (see world/Destructibles.js) rather than the game needing to know
+  // about destructible geometry/visuals at all.
+  event.body.onImpact?.(impactSpeed);
 });
 
     this.vehicle = new Vehicle(
@@ -372,6 +377,10 @@ if (mobileButton) {
         this.accumulator = 0;
     }
 
+    // Keep every remote player's collider where it's currently being
+    // rendered before stepping physics against it this frame.
+    this.multiplayer?.syncPhysics();
+
     while (this.accumulator >= FIXED_DT) {
   // "wheelActive" here means "a source capable of clutch + H-shifter
   // input is currently live" — the physical wheel or touch controls.
@@ -413,6 +422,7 @@ if (mobileButton) {
 
     this.vehicle.sync();
     this.deliverySystem.update(this.vehiclePhysics.body.position, dt);
+    this.world.destructibles.update(dt);
 
 const speed = this.vehiclePhysics.body.velocity.length();
 const manual = this.drivingMode === "manual";

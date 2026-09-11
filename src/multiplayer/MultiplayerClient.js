@@ -62,7 +62,7 @@ export class MultiplayerClient {
     this.status = document.createElement("div");
     this.count = document.createElement("div");
     this.details = document.createElement("small");
-    this.details.textContent = "Remote cars are non-colliding.";
+    this.details.textContent = "Remote cars are solid but simulated locally.";
 
     this.button = document.createElement("button");
     this.button.textContent = "Disconnect multiplayer";
@@ -352,7 +352,7 @@ export class MultiplayerClient {
 
     this.remotes.set(
       player.id,
-      new RemoteVehicle(this.game.scene, player)
+      new RemoteVehicle(this.game.scene, player, this.game.physics)
     );
 
     this.updateCount();
@@ -476,6 +476,14 @@ export class MultiplayerClient {
     this.localBubble.update(now);
 
     this.animationId = requestAnimationFrame(this.animate);
+  }
+
+  // Called by Game once per physics tick, right before physics.step(), so
+  // every remote's collider sits where it's currently being drawn.
+  syncPhysics() {
+    for (const remote of this.remotes.values()) {
+      remote.syncPhysics();
+    }
   }
 
   updateCount() {
