@@ -8,6 +8,223 @@ const INTERPOLATION_DELAY = 120;
 // overlaps the player's name.
 const BUBBLE_ANCHOR_Y = 2.35;
 
+// ---------------------------------------------------------------------------
+// Geometry / material helpers
+// ---------------------------------------------------------------------------
+// Kept deliberately lighter than the local player's Vehicle.js: up to 8 of
+// these can exist on screen at once, so detail favors cheap, reusable
+// pieces over exhaustive modeling. Every geometry/material used below is
+// created fresh inside this constructor call (nothing is shared across
+// RemoteVehicle instances), so the existing traverse-based dispose() logic
+// keeps working unmodified.
+
+function addBox(parent, size, position, material, rotation) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+  mesh.position.set(...position);
+  if (rotation) mesh.rotation.set(...rotation);
+  mesh.castShadow = !material.transparent;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function addMesh(parent, geometry, material, position, rotation) {
+  const mesh = new THREE.Mesh(geometry, material);
+  if (position) mesh.position.set(...position);
+  if (rotation) mesh.rotation.set(...rotation);
+  mesh.castShadow = !material.transparent;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function group(parent, position, rotation) {
+  const g = new THREE.Group();
+  if (position) g.position.set(...position);
+  if (rotation) g.rotation.set(...rotation);
+  parent.add(g);
+  return g;
+}
+
+function createMaterials(color) {
+  return {
+    paint: new THREE.MeshStandardMaterial({
+      color,
+      metalness: 0.45,
+      roughness: 0.35
+    }),
+
+    paintLower: new THREE.MeshStandardMaterial({
+      color,
+      metalness: 0.2,
+      roughness: 0.55
+    }),
+
+    dark: new THREE.MeshStandardMaterial({
+      color: 0x17212b,
+      roughness: 0.85
+    }),
+
+    trim: new THREE.MeshStandardMaterial({
+      color: 0x2c343d,
+      metalness: 0.4,
+      roughness: 0.45
+    }),
+
+    chrome: new THREE.MeshStandardMaterial({
+      color: 0xd7dce0,
+      metalness: 0.95,
+      roughness: 0.18
+    }),
+
+    alloy: new THREE.MeshStandardMaterial({
+      color: 0xc3c8cd,
+      metalness: 0.8,
+      roughness: 0.28
+    }),
+
+    rubber: new THREE.MeshStandardMaterial({
+      color: 0x121416,
+      roughness: 0.95
+    }),
+
+    brakeDisc: new THREE.MeshStandardMaterial({
+      color: 0x8a8d90,
+      metalness: 0.7,
+      roughness: 0.45
+    }),
+
+    glass: new THREE.MeshStandardMaterial({
+      color: 0x294958,
+      metalness: 0.25,
+      roughness: 0.3,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    }),
+
+    headlight: new THREE.MeshStandardMaterial({
+      color: 0xffefd1,
+      emissive: 0xffd699,
+      emissiveIntensity: 0.5
+    }),
+
+    drl: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0xdfeeff,
+      emissiveIntensity: 0.8
+    }),
+
+    // Owned by this instance; assigned to this.brakeMaterial so update()
+    // can toggle its emissiveIntensity per-vehicle.
+    tailLamp: new THREE.MeshStandardMaterial({
+      color: 0xb41424,
+      emissive: 0xff1420,
+      emissiveIntensity: 0.25
+    }),
+
+    indicator: new THREE.MeshStandardMaterial({
+      color: 0xff9d2e,
+      emissive: 0xff8c00,
+      emissiveIntensity: 0.4
+    })
+  };
+}
+
+function createGrille(mat, parent, z) {
+  const g = group(parent, [0, 0.05, z]);
+  addBox(g, [0.72, 0.2, 0.04], [0, 0, -0.02], mat.dark);
+  addBox(g, [0.76, 0.025, 0.025], [0, 0.1, 0], mat.chrome);
+  addBox(g, [0.76, 0.025, 0.025], [0, -0.1, 0], mat.chrome);
+  for (const t of [-0.055, 0, 0.055]) {
+    addBox(g, [0.68, 0.02, 0.04], [0, t, 0.01], mat.trim);
+  }
+  return g;
+}
+
+function createHeadlight(mat, side, parent) {
+  const g = group(parent, [side * 0.63, 0.3, 1.93]);
+  addBox(g, [0.36, 0.15, 0.04], [0, 0, -0.02], mat.dark);
+  addMesh(
+    g,
+    new THREE.CylinderGeometry(0.05, 0.05, 0.05, 14),
+    mat.headlight,
+    [-0.06 * side, 0, 0.02],
+    [Math.PI / 2, 0, 0]
+  );
+  addBox(g, [0.26, 0.02, 0.02], [0.03 * side, 0.045, 0.03], mat.drl);
+  addBox(g, [0.36, 0.15, 0.012], [0, 0, 0.035], mat.chrome);
+  return g;
+}
+
+function createTaillight(mat, side, parent) {
+  const g = group(parent, [side * 0.63, 0.3, -2.03]);
+  addBox(g, [0.36, 0.16, 0.04], [0, 0, 0.015], mat.dark);
+  const segment = addBox(g, [0.28, 0.09, 0.02], [0, 0, 0.035], mat.tailLamp);
+  return { group: g, lamp: segment };
+}
+
+function createMirror(mat, side, parent) {
+  const g = group(parent, [side * 0.98, 0.68, 0.7]);
+  addBox(g, [0.16, 0.1, 0.18], [0, 0, 0], mat.paint);
+  addMesh(
+    g,
+    new THREE.PlaneGeometry(0.11, 0.06),
+    mat.chrome,
+    [0, 0, -0.091],
+    [0, Math.PI, 0]
+  );
+  return g;
+}
+
+function createWheelGeometries() {
+  const tire = new THREE.CylinderGeometry(0.36, 0.36, 0.25, 18);
+  tire.rotateZ(Math.PI / 2);
+
+  const rim = new THREE.CylinderGeometry(0.26, 0.26, 0.255, 18);
+  rim.rotateZ(Math.PI / 2);
+
+  const hub = new THREE.CylinderGeometry(0.08, 0.08, 0.26, 12);
+  hub.rotateZ(Math.PI / 2);
+
+  const spoke = new THREE.BoxGeometry(0.05, 0.2, 0.02);
+
+  const disc = new THREE.CylinderGeometry(0.2, 0.2, 0.02, 16);
+  disc.rotateZ(Math.PI / 2);
+
+  return { tire, rim, hub, spoke, disc };
+}
+
+function createWheelVisual(geo, mat) {
+  const wheelGroup = new THREE.Group();
+
+  const tireMesh = new THREE.Mesh(geo.tire, mat.rubber);
+  tireMesh.castShadow = true;
+  wheelGroup.add(tireMesh);
+
+  const rimMesh = new THREE.Mesh(geo.rim, mat.alloy);
+  wheelGroup.add(rimMesh);
+
+  for (let i = 0; i < 3; i++) {
+    const spokeMesh = new THREE.Mesh(geo.spoke, mat.alloy);
+    spokeMesh.rotation.x = (Math.PI * 2 * i) / 3;
+    wheelGroup.add(spokeMesh);
+  }
+
+  const hubMesh = new THREE.Mesh(geo.hub, mat.trim);
+  wheelGroup.add(hubMesh);
+
+  const discMesh = new THREE.Mesh(geo.disc, mat.brakeDisc);
+  wheelGroup.add(discMesh);
+
+  return wheelGroup;
+}
+
+// ---------------------------------------------------------------------------
+// RemoteVehicle
+// ---------------------------------------------------------------------------
+
 export class RemoteVehicle {
   constructor(scene, player) {
     this.scene = scene;
@@ -22,70 +239,64 @@ export class RemoteVehicle {
     this.samples = [];
     this.lastState = player.state;
 
-    this.paint = new THREE.MeshStandardMaterial({
-      color: player.color,
-      metalness: 0.4,
-      roughness: 0.35
-    });
+    const mat = createMaterials(player.color);
+    this.paint = mat.paint;
 
-    const dark = new THREE.MeshStandardMaterial({
-      color: 0x17212b,
-      roughness: 0.85
-    });
+    // ---- Lower body / floor pan ------------------------------------------
+    addBox(this.root, [1.78, 0.4, 3.98], [0, 0.1, 0], mat.paint);
+    for (const side of [-1, 1]) {
+      addBox(this.root, [0.06, 0.08, 2.4], [side * 0.9, -0.08, -0.1], mat.paintLower);
+    }
+    addBox(this.root, [1.7, 0.06, 0.1], [0, -0.06, 2.06], mat.paintLower);
+    addBox(this.root, [1.66, 0.06, 0.12], [0, -0.06, -2.08], mat.paintLower);
 
-    const glass = new THREE.MeshStandardMaterial({
-      color: 0x294958,
-      metalness: 0.25,
-      roughness: 0.3
-    });
+    // ---- Cabin belt + roof --------------------------------------------------
+    addBox(this.root, [1.5, 0.55, 2], [0, 0.65, -0.15], mat.glass);
+    addBox(this.root, [1.65, 0.1, 2.15], [0, 1, -0.15], mat.paint);
 
-    const trim = new THREE.MeshStandardMaterial({
-      color: 0x778591,
-      metalness: 0.5,
-      roughness: 0.4
-    });
+    // ---- Hood + trunk ---------------------------------------------------------
+    addBox(this.root, [1.75, 0.2, 1], [0, 0.35, 1.4], mat.paint);
+    addBox(this.root, [0.85, 0.045, 0.9], [0, 0.45, 1.4], mat.paint);
+    addBox(this.root, [1.75, 0.18, 0.55], [0, 0.34, -1.6], mat.paint);
 
-    const box = (size, position, material) => {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(...size),
-        material
-      );
-
-      mesh.position.set(...position);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.root.add(mesh);
-      return mesh;
-    };
-
-    box([1.8, 0.45, 4], [0, 0.1, 0], this.paint);
-    box([1.5, 0.6, 2], [0, 0.65, -0.15], glass);
-    box([1.65, 0.1, 2.15], [0, 1, -0.15], this.paint);
-    box([1.75, 0.2, 1], [0, 0.35, 1.4], this.paint);
-    box([1.85, 0.15, 0.15], [0, 0, 2.02], dark);
-    box([1.85, 0.15, 0.15], [0, 0, -2.02], dark);
-
-    const headlights = new THREE.MeshStandardMaterial({
-      color: 0xffefd1,
-      emissive: 0xffd699,
-      emissiveIntensity: 0.5
-    });
-
-    this.brakeMaterial = new THREE.MeshStandardMaterial({
-      color: 0xb41424,
-      emissive: 0xff1420,
-      emissiveIntensity: 0.25
-    });
-
-    for (const x of [-0.63, 0.63]) {
-      box([0.4, 0.14, 0.04], [x, 0.3, 1.94], headlights);
-      box([0.4, 0.14, 0.04], [x, 0.3, -2.03], this.brakeMaterial);
+    // ---- Fenders ----------------------------------------------------------
+    for (const side of [-1, 1]) {
+      addBox(this.root, [0.1, 0.3, 0.85], [side * 0.92, 0.25, 1.15], mat.paint);
+      addBox(this.root, [0.1, 0.3, 0.85], [side * 0.92, 0.25, -1.15], mat.paint);
     }
 
-    const wheelGeometry = new THREE.CylinderGeometry(
-      0.36, 0.36, 0.25, 16
-    );
-    wheelGeometry.rotateZ(Math.PI / 2);
+    // ---- Bumpers + grille ---------------------------------------------------
+    addBox(this.root, [1.85, 0.15, 0.15], [0, 0, 2.02], mat.dark);
+    addBox(this.root, [1.85, 0.15, 0.15], [0, 0, -2.02], mat.dark);
+    createGrille(mat, this.root, 2.05);
+
+    // ---- Headlights / taillights --------------------------------------------
+    for (const side of [-1, 1]) {
+      createHeadlight(mat, side, this.root);
+    }
+
+    this.brakeMaterial = mat.tailLamp;
+    for (const side of [-1, 1]) {
+      createTaillight(mat, side, this.root);
+    }
+
+    // ---- Doors, mirrors, handles --------------------------------------------
+    for (const side of [-1, 1]) {
+      addBox(this.root, [0.02, 0.3, 1.9], [side * 0.905, 0.4, -0.15], mat.trim); // door seam
+      addBox(this.root, [0.03, 0.03, 0.14], [side * 0.905, 0.5, 0.4], mat.chrome); // handle
+      addBox(this.root, [0.015, 0.02, 2.1], [side * 0.9, 0.5, -0.1], mat.trim); // character line
+      createMirror(mat, side, this.root);
+    }
+
+    // ---- Windows: separate panels instead of one big glass box -----------
+    // (Belt/roof glass box above already gives the silhouette from a
+    // distance; these thin panels add believable panel seams up close.)
+    for (const side of [-1, 1]) {
+      addBox(this.root, [0.02, 0.02, 1.9], [side * 0.75, 0.92, -0.15], mat.trim);
+    }
+
+    // ---- Wheels -------------------------------------------------------------
+    const wheelGeo = createWheelGeometries();
 
     this.wheels = [];
 
@@ -98,20 +309,14 @@ export class RemoteVehicle {
       const pivot = new THREE.Group();
       pivot.position.set(x, -0.32, z);
 
-      const tire = new THREE.Mesh(wheelGeometry, dark);
-      tire.castShadow = true;
+      const tire = createWheelVisual(wheelGeo, mat);
       pivot.add(tire);
-
-      const spoke = new THREE.Mesh(
-        new THREE.BoxGeometry(0.27, 0.05, 0.4),
-        trim
-      );
-      tire.add(spoke);
 
       this.root.add(pivot);
       this.wheels.push({ pivot, tire, front });
     }
 
+    // ---- Nameplate ------------------------------------------------------------
     const canvas = document.createElement("canvas");
     canvas.width = 512;
     canvas.height = 96;
