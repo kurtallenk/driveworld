@@ -62,7 +62,7 @@ export class InputDiscoveryPanel {
     this.element.id = "input-discovery";
 
     this.element.innerHTML = `
-      <summary>Hardware discovery — read only</summary>
+      <summary>Hardware discovery read only</summary>
 
       <p>
         Use Keyboard mode, stop the car, and select Arcade before testing.
@@ -287,7 +287,7 @@ export class InputDiscoveryPanel {
       if (isBaseline) {
         this.report = {
           version: 1,
-          purpose: "Discovery evidence — not an enabled control profile",
+          purpose: "Discovery evidence not an enabled control profile",
           capturedAt: new Date().toISOString(),
           userAgent: navigator.userAgent,
           device: {
