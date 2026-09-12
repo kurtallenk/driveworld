@@ -1,8 +1,6 @@
 import * as THREE from "three";
 
-// Keeps bubbles legible without letting a long message balloon into a
-// screen-filling shape. The server already caps messages at 200 chars;
-// this is a tighter, presentation-only limit.
+// Presentation-only limits (server caps at 200 chars).
 const MAX_CHARS = 140;
 const MAX_LINES = 4;
 
@@ -15,9 +13,7 @@ const TAIL_PX = 16;
 const MIN_TEXT_WIDTH_PX = 60;
 const MAX_TEXT_WIDTH_PX = 420;
 
-// Matches the pixel-to-world-unit density already used for the remote
-// player nameplate sprite (512x96 canvas at a 2.8 x 0.525 world scale),
-// so bubbles and name tags read at a consistent size.
+// Matches the pixel-to-world-unit density used elsewhere.
 const PX_PER_UNIT = 512 / 2.8;
 
 const HOLD_MS = 5000;
@@ -59,9 +55,8 @@ function wrapAll(context, text, maxWidth) {
     }
 
     lines.push(line);
-    line = context.measureText(word).width <= maxWidth
-      ? word
-      : pushHardBreak(word);
+    line =
+      context.measureText(word).width <= maxWidth ? word : pushHardBreak(word);
   }
 
   if (line) lines.push(line);
@@ -93,27 +88,21 @@ function roundedRect(context, x, y, width, height, radius) {
   context.closePath();
 }
 
-// A single billboard speech bubble attached to a vehicle's local origin.
-// Reused across messages (the canvas is redrawn, not recreated) so a busy
-// chat never allocates a new texture per line.
 export class ChatBubble {
   constructor(parent, anchorY) {
     this.parent = parent;
     this.anchorY = anchorY;
 
     this.canvas = document.createElement("canvas");
-    this.canvas.width = 2;
-    this.canvas.height = 2;
+    this.canvas.width = 4;
+    this.canvas.height = 4;
+
     this.context = this.canvas.getContext("2d");
 
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.colorSpace = THREE.SRGBColorSpace;
 
-    // The canvas is resized on every message (see draw()). Mipmapping a
-    // texture that keeps changing size/aspect ratio is what caused every
-    // message after the first to render garbled — the GPU was reusing
-    // stale mip levels from the previous bubble's dimensions. This is a
-    // flat billboard sprite, so mipmaps buy nothing anyway; turn them off.
+    // IMPORTANT: avoid stale mip levels / Chrome copy-subtexture errors when resizing.
     this.texture.generateMipmaps = false;
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.magFilter = THREE.LinearFilter;
@@ -128,6 +117,7 @@ export class ChatBubble {
     this.sprite = new THREE.Sprite(this.material);
     this.sprite.visible = false;
     this.sprite.renderOrder = 10;
+
     parent.add(this.sprite);
 
     this.state = "hidden";
@@ -153,7 +143,9 @@ export class ChatBubble {
 
   draw(text) {
     const context = this.context;
-    context.font = `600 ${FONT_PX}px system-ui, -apple-system, sans-serif`;
+
+    const font = `600 ${FONT_PX}px system-ui, -apple-system, sans-serif`;
+    context.font = font;
 
     const rawLines = wrapAll(context, text, MAX_TEXT_WIDTH_PX);
     const lines = truncate(context, rawLines, MAX_LINES, MAX_TEXT_WIDTH_PX);
@@ -166,15 +158,29 @@ export class ChatBubble {
 
     const bubbleWidth = Math.ceil(textWidth + PAD_X_PX * 2);
     const textBlockHeight = lines.length * LINE_HEIGHT_PX;
-    const bubbleHeight = Math.ceil(
-      PAD_TOP_PX + textBlockHeight + PAD_BOTTOM_PX
-    );
+    const bubbleHeight = Math.ceil(PAD_TOP_PX + textBlockHeight + PAD_BOTTOM_PX);
 
-    this.canvas.width = bubbleWidth;
-    this.canvas.height = bubbleHeight + TAIL_PX;
+    const nextW = bubbleWidth;
+    const nextH = bubbleHeight + TAIL_PX;
 
-    // Resizing the canvas clears it and resets the font, so re-apply.
-    context.font = `600 ${FONT_PX}px system-ui, -apple-system, sans-serif`;
+    // If the canvas size changes, force Three/WebGL to reallocate the GPU texture
+    // to avoid GL_INVALID_VALUE glCopySubTextureCHROMIUM errors on Chrome.
+    const sizeChanged =
+      this.canvas.width !== nextW || this.canvas.height !== nextH;
+
+    if (sizeChanged) {
+      this.canvas.width = nextW;
+      this.canvas.height = nextH;
+
+      // Force reallocation of the underlying WebGLTexture next upload.
+      this.texture.dispose();
+    } else {
+      context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+
+    // Resizing clears state; re-apply.
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.font = font;
     context.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     context.fillStyle = "rgba(9, 17, 27, 0.82)";
@@ -185,7 +191,7 @@ export class ChatBubble {
     context.fill();
     context.stroke();
 
-    // Speech-bubble pointer toward the vehicle below.
+    // Tail.
     context.beginPath();
     context.moveTo(bubbleWidth / 2 - 12, bubbleHeight - 2);
     context.lineTo(bubbleWidth / 2 + 12, bubbleHeight - 2);
@@ -194,6 +200,7 @@ export class ChatBubble {
     context.fillStyle = "rgba(9, 17, 27, 0.82)";
     context.fill();
 
+    // Text.
     context.fillStyle = "#f2f8ff";
     context.textAlign = "center";
     context.textBaseline = "alphabetic";
@@ -203,17 +210,17 @@ export class ChatBubble {
       context.fillText(line, bubbleWidth / 2, y);
     });
 
+    // Ensure Three sees both content + size changes reliably.
+    if (this.texture.source) this.texture.source.data = this.canvas;
     this.texture.needsUpdate = true;
+    if (this.texture.source) this.texture.source.needsUpdate = true;
 
     const worldWidth = this.canvas.width / PX_PER_UNIT;
     const worldHeight = this.canvas.height / PX_PER_UNIT;
 
     this.sprite.scale.set(worldWidth, worldHeight, 1);
 
-    // Anchor the sprite at the tip of the speech-bubble tail (the very
-    // bottom row of the canvas) rather than its geometric center, so the
-    // tail always points at `anchorY` regardless of how tall the bubble
-    // grows with longer, wrapped messages.
+    // Anchor at tail tip.
     this.sprite.center.set(0.5, 0);
     this.sprite.position.set(0, this.anchorY, 0);
   }
