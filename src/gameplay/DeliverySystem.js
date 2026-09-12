@@ -16,6 +16,11 @@ const POINTS = [
 const PICKUP_RADIUS = 7;
 export const DELIVERY_REWARD = 25;
 
+// Master switch for the whole delivery mini-game. Flip back to true to
+// re-enable it -- every branch below checks this flag rather than the
+// system being removed, so no delivery logic needs to be rewritten.
+export const DELIVERY_SYSTEM_ENABLED = false;
+
 const PICKUP_COLOR = 0xffb347;
 const PICKUP_EMISSIVE = 0x552b00;
 const DROPOFF_COLOR = 0x4be3a0;
@@ -34,6 +39,11 @@ export class DeliverySystem {
     this.onDelivery = null;
 
     this.markers = new Map();
+
+    // Disabled: skip building beacon geometry entirely (no draw calls,
+    // no scene nodes) while keeping every method below intact and callable
+    // so re-enabling this is a one-line flag flip, not a rewrite.
+    if (!DELIVERY_SYSTEM_ENABLED) return;
 
     const postGeometry = new THREE.CylinderGeometry(0.12, 0.12, 2.4, 8);
     const capGeometry = new THREE.OctahedronGeometry(0.55, 0);
@@ -95,6 +105,8 @@ export class DeliverySystem {
   }
 
   update(position, dt) {
+    if (!DELIVERY_SYSTEM_ENABLED) return;
+
     for (const marker of this.markers.values()) {
       marker.cap.rotation.y += dt * 0.8;
     }
@@ -124,6 +136,8 @@ export class DeliverySystem {
   }
 
   get statusText() {
+    if (!DELIVERY_SYSTEM_ENABLED) return "Delivery system disabled";
+
     return this.status === "assigned"
       ? `Deliver to ${this.job.dropoff.name}`
       : "Drive to a glowing beacon to pick up a delivery";

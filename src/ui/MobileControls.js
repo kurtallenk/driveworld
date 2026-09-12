@@ -35,6 +35,7 @@ export class MobileControls {
     this.bindPedal(this.brakeEl, "brake");
     this.bindPedal(this.clutchEl, "clutch");
     this.bindShifter();
+    this.bindTurret();
     this.bindOrientation();
 
     this.root.hidden = true;
@@ -61,6 +62,25 @@ export class MobileControls {
     this.accelEl = this.makePedal("GAS", "mc-pedal-accel");
 
     this.pedalsEl.append(this.clutchEl, this.brakeEl, this.accelEl);
+
+    // Turret deploy button, stacked directly above the pedal column so it
+    // shares the bottom-right zone without ever overlapping a pedal's own
+    // hit area. Always visible (arcade and manual alike) since turret
+    // deployment isn't tied to driving mode.
+    this.turretEl = document.createElement("button");
+    this.turretEl.type = "button";
+    this.turretEl.className = "mc-turret-btn";
+    this.turretEl.setAttribute("aria-label", "Deploy turret");
+    this.turretEl.innerHTML =
+      '<span class="mc-turret-icon" aria-hidden="true">&#8982;</span>' +
+      '<span class="mc-turret-text">TURRET</span>';
+
+    // Groups the turret button with the pedal stack under one fixed
+    // bottom-right anchor, so the pair reflows together instead of the
+    // turret button needing its own separately-tuned position.
+    this.rightClusterEl = document.createElement("div");
+    this.rightClusterEl.className = "mc-right-cluster";
+    this.rightClusterEl.append(this.turretEl, this.pedalsEl);
 
     // Bottom center: H-shifter (manual mode only).
     this.shifterEl = document.createElement("div");
@@ -96,7 +116,7 @@ export class MobileControls {
 
     this.root.append(
       this.steeringEl,
-      this.pedalsEl,
+      this.rightClusterEl,
       this.shifterEl,
       this.orientationEl
     );
@@ -259,6 +279,37 @@ export class MobileControls {
       el.classList.remove("mc-pressed");
       this.input.setMobileInput({ [axis]: 0 });
     }
+  }
+
+  // ---- Turret --------------------------------------------------------
+
+  bindTurret() {
+    const el = this.turretEl;
+    let pointerId = null;
+
+    // A tap requests exactly one toggle via InputManager.requestTurretToggle
+    // -- the same edge-triggered flag the KeyF keyboard binding sets (see
+    // InputManager) -- so this button drives the existing turret toggle
+    // instead of a second, competing turret trigger.
+    const press = event => {
+      if (pointerId !== null) return;
+
+      pointerId = event.pointerId;
+      el.setPointerCapture(pointerId);
+      el.classList.add("mc-pressed");
+      this.input.requestTurretToggle();
+    };
+
+    const release = event => {
+      if (event.pointerId !== pointerId) return;
+      pointerId = null;
+      el.classList.remove("mc-pressed");
+    };
+
+    el.addEventListener("pointerdown", press);
+    el.addEventListener("pointerup", release);
+    el.addEventListener("pointercancel", release);
+    el.addEventListener("lostpointercapture", release);
   }
 
   // ---- H-shifter -----------------------------------------------------

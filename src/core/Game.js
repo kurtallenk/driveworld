@@ -13,7 +13,7 @@ import { SettingsMenu } from "../ui/SettingsMenu.js";
 import { VehicleFeedback } from "../vehicle/VehicleFeedback.js";
 import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
 import { MobileControls } from "../ui/MobileControls.js";
-import { DeliverySystem } from "../gameplay/DeliverySystem.js";
+import { DeliverySystem, DELIVERY_SYSTEM_ENABLED } from "../gameplay/DeliverySystem.js";
 import { Turret } from "../turret/Turret.js";
 import { TargetSystem } from "../turret/TargetSystem.js";
 
@@ -85,6 +85,15 @@ this.audio.effectsVolume =
 
     this.deliveryStatusElement = document.querySelector("#delivery-status");
     this.deliveryCountElement = document.querySelector("#delivery-count");
+
+    // Delivery UI stays in the DOM (see DeliverySystem's own
+    // DELIVERY_SYSTEM_ENABLED flag) but is hidden outright while the
+    // mini-game is disabled, freeing HUD space instead of showing a
+    // permanently-idle status line.
+    if (!DELIVERY_SYSTEM_ENABLED) {
+      if (this.deliveryStatusElement) this.deliveryStatusElement.style.display = "none";
+      if (this.deliveryCountElement) this.deliveryCountElement.style.display = "none";
+    }
 
     // Phase 2 replaces this local assignment with server session data.
     this.player = {
@@ -575,9 +584,11 @@ this.renderer.render(this.scene, this.camera);
   this.input.storageWarning
 ].filter(Boolean).join(" ");
 
-this.deliveryStatusElement.textContent = this.deliverySystem.statusText;
-this.deliveryCountElement.textContent =
-  `Deliveries: ${this.deliverySystem.deliveries} · Score: ${this.deliverySystem.score}`;
+if (DELIVERY_SYSTEM_ENABLED) {
+  this.deliveryStatusElement.textContent = this.deliverySystem.statusText;
+  this.deliveryCountElement.textContent =
+    `Deliveries: ${this.deliverySystem.deliveries} · Score: ${this.deliverySystem.score}`;
+}
 
 if (this.turretStatusElement) {
   this.turretStatusElement.textContent = this.turret.statusText;

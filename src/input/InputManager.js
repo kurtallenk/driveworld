@@ -230,6 +230,15 @@ export class InputManager {
     this.mobileGear = gear;
   }
 
+  // Edge-triggered, same semantics as the KeyF keydown handler above (see
+  // turretToggleRequested there): a single tap always requests exactly one
+  // toggle, regardless of how long the mobile button is held. Feeds the
+  // same consumeTurretToggle() the keyboard/gamepad paths already use, so
+  // there is exactly one turret-deployment trigger in the codebase.
+  requestTurretToggle() {
+    this.turretToggleRequested = true;
+  }
+
   disarm() {
     this.armed = false;
     this.armedIndex = null;
