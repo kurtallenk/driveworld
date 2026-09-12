@@ -57,6 +57,11 @@ export class Turret {
     this.recoil = 0;
     this.flash = 0;
 
+    // Scaled up by Game.js as the player levels up (see PLAYER_CONFIG's
+    // turretDamageBonusPerInterval). Kept as a plain multiplier here so
+    // Turret.js doesn't need to know anything about the leveling system.
+    this.damageMultiplier = 1;
+
     this.effects = new TurretEffectsPool(scene);
 
     applyTurretPose(this.parts, {
@@ -134,10 +139,24 @@ export class Turret {
 
     let best = null;
     let bestDistance = Infinity;
+    let bestIsBoss = false;
 
+    // Bosses are the "special encounter" (see requirement #28) -- prefer
+    // one over any in-range normal enemy, but still just pick the nearest
+    // in-range candidate within each tier so selection never flickers.
     for (const candidate of targetSystem.getActiveTargets()) {
       const distance = scratchTurretWorld.distanceTo(candidate.position);
       if (distance > TURRET_CONFIG.range) continue;
+
+      const isBoss = candidate.kind === "boss";
+      if (bestIsBoss && !isBoss) continue;
+
+      if (isBoss && !bestIsBoss) {
+        best = candidate;
+        bestDistance = distance;
+        bestIsBoss = true;
+        continue;
+      }
 
       if (distance < bestDistance) {
         best = candidate;
@@ -195,7 +214,10 @@ export class Turret {
 
     this.effects.spawnTracer(muzzleOrigin, impactPoint);
 
-    const destroyed = targetSystem.applyDamage(this.target, TURRET_CONFIG.damage);
+    const destroyed = targetSystem.applyDamage(
+      this.target,
+      TURRET_CONFIG.damage * this.damageMultiplier
+    );
     this.effects.spawnImpact(impactPoint);
 
     if (destroyed) this.target = null;

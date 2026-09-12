@@ -43,32 +43,67 @@ export class MultiplayerClient {
   }
 
   createStatusPanel() {
+    // Real multiplayer-game "player list" widget: a small always-visible
+    // pill (icon + live player count) that expands into the full status/
+    // leaderboard panel on demand. Starts minimized so it never competes
+    // with the driving HUD for attention or screen space.
     this.panel = document.createElement("section");
+    this.panel.className = "op-panel";
+    this.panel.setAttribute("aria-label", "Online players");
 
-    Object.assign(this.panel.style, {
-      position: "fixed",
-      left: "1rem",
-      top: "5rem",
-      zIndex: "4",
-      maxWidth: "280px",
-      padding: "0.75rem",
-      borderRadius: "0.6rem",
-      border: "1px solid #ffffff24",
-      background: "#0c1623df",
-      fontSize: "0.8rem",
-      lineHeight: "1.5"
+    // --- Header: always visible, holds the minimize/expand toggle -------
+    this.toggleButton = document.createElement("button");
+    this.toggleButton.type = "button";
+    this.toggleButton.className = "op-toggle";
+    this.toggleButton.setAttribute("aria-expanded", "false");
+    this.toggleButton.setAttribute("aria-label", "Expand online players panel");
+
+    this.toggleIcon = document.createElement("span");
+    this.toggleIcon.className = "op-toggle-icon";
+    this.toggleIcon.setAttribute("aria-hidden", "true");
+    this.toggleIcon.textContent = "👥";
+
+    this.badgeCount = document.createElement("span");
+    this.badgeCount.className = "op-toggle-count";
+
+    this.toggleChevron = document.createElement("span");
+    this.toggleChevron.className = "op-toggle-chevron";
+    this.toggleChevron.setAttribute("aria-hidden", "true");
+    this.toggleChevron.textContent = "▾";
+
+    this.toggleButton.append(this.toggleIcon, this.badgeCount, this.toggleChevron);
+
+    this.toggleButton.addEventListener("click", () => {
+      const expanded = this.panel.classList.toggle("op-panel--expanded");
+      this.toggleButton.setAttribute("aria-expanded", String(expanded));
+      this.toggleButton.setAttribute(
+        "aria-label",
+        expanded ? "Minimize online players panel" : "Expand online players panel"
+      );
+      this.syncPanelHeight();
     });
 
+    // --- Body: everything that only matters once expanded ----------------
+    this.body = document.createElement("div");
+    this.body.className = "op-body";
+
+    this.bodyInner = document.createElement("div");
+    this.bodyInner.className = "op-body-inner";
+
     this.status = document.createElement("div");
+    this.status.className = "op-status";
+
     this.count = document.createElement("div");
+    this.count.className = "op-count";
+
     this.details = document.createElement("small");
+    this.details.className = "op-details";
     this.details.textContent = "Remote cars are solid but simulated locally.";
 
     this.button = document.createElement("button");
+    this.button.type = "button";
+    this.button.className = "op-disconnect";
     this.button.textContent = "Disconnect multiplayer";
-    this.button.style.marginTop = "0.5rem";
-    this.button.style.padding = "0.4rem 0.65rem";
-    this.button.style.fontSize = "0.75rem";
 
     this.button.addEventListener("click", () => {
       if (this.running) {
@@ -90,20 +125,17 @@ export class MultiplayerClient {
     });
 
     this.leaderboardHeading = document.createElement("strong");
+    this.leaderboardHeading.className = "op-leaderboard-heading";
     this.leaderboardHeading.textContent = "Delivery leaderboard";
-    this.leaderboardHeading.style.display = "block";
-    this.leaderboardHeading.style.marginTop = "0.6rem";
 
     this.leaderboardList = document.createElement("ol");
-    Object.assign(this.leaderboardList.style, {
-      margin: "0.3rem 0 0",
-      paddingLeft: "1.1rem"
-    });
+    this.leaderboardList.className = "op-leaderboard-list";
 
     this.leaderboardEmpty = document.createElement("small");
+    this.leaderboardEmpty.className = "op-leaderboard-empty";
     this.leaderboardEmpty.textContent = "No deliveries yet this session.";
 
-    this.panel.append(
+    this.bodyInner.append(
       this.status,
       this.count,
       this.details,
@@ -113,9 +145,35 @@ export class MultiplayerClient {
       this.leaderboardEmpty
     );
 
+    this.body.append(this.bodyInner);
+    this.panel.append(this.toggleButton, this.body);
+
     document.body.append(this.panel);
     this.updateCount();
     this.updateLeaderboard([]);
+
+    // Keeps other UI (the mobile HUD in particular) from ever sitting
+    // underneath this panel, in either state, at any viewport size — see
+    // the body.mobile-controls-active #hud rule in style.css, which reads
+    // the --op-reserved variable this sets.
+    if (typeof ResizeObserver !== "undefined") {
+      this._panelResizeObserver = new ResizeObserver(() => this.syncPanelHeight());
+      this._panelResizeObserver.observe(this.panel);
+    }
+
+    this.syncPanelHeight();
+  }
+
+  syncPanelHeight() {
+    requestAnimationFrame(() => {
+      if (!this.panel?.isConnected) return;
+
+      const bottom = this.panel.getBoundingClientRect().bottom;
+      document.documentElement.style.setProperty(
+        "--op-reserved",
+        `${Math.round(bottom + 12)}px`
+      );
+    });
   }
 
   collectPaintMaterials() {
@@ -445,6 +503,8 @@ export class MultiplayerClient {
     const hasEntries = entries.length > 0;
     this.leaderboardList.hidden = !hasEntries;
     this.leaderboardEmpty.hidden = hasEntries;
+
+    this.syncPanelHeight();
   }
 
   sendChat(text) {
@@ -494,8 +554,12 @@ export class MultiplayerClient {
   }
 
   updateCount() {
-    this.count.textContent =
-      `Players: ${this.remotes.size + (this.selfId ? 1 : 0)} / 8`;
+    const total = this.remotes.size + (this.selfId ? 1 : 0);
+
+    this.count.textContent = `Players: ${total} / 8`;
+    if (this.badgeCount) this.badgeCount.textContent = `${total}/8`;
+
+    this.syncPanelHeight();
   }
 
   clearRemotes() {
@@ -517,6 +581,8 @@ export class MultiplayerClient {
     this.socket?.close(1000, "Game closed");
     this.clearRemotes();
     this.localBubble.dispose();
+    this._panelResizeObserver?.disconnect();
     this.panel.remove();
+    document.documentElement.style.removeProperty("--op-reserved");
   }
 }

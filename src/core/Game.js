@@ -16,6 +16,17 @@ import { MobileControls } from "../ui/MobileControls.js";
 import { DeliverySystem, DELIVERY_SYSTEM_ENABLED } from "../gameplay/DeliverySystem.js";
 import { Turret } from "../turret/Turret.js";
 import { TargetSystem } from "../turret/TargetSystem.js";
+import { PLAYER_CONFIG } from "../turret/TurretConfig.js";
+import { PlayerHealth } from "../gameplay/PlayerHealth.js";
+import { LevelSystem } from "../gameplay/LevelSystem.js";
+import { HealthBar } from "../gameplay/HealthBar.js";
+import { MANUAL_CONFIG } from "../vehicle/ManualDrivetrain.js";
+
+// Tachometer scale for the dashboard's RPM arc. Redline comes straight
+// from the manual drivetrain's own config, so the gauge always agrees
+// with the drivetrain that actually revs it.
+const DASH_RPM_MAX = MANUAL_CONFIG.revLimitRPM + 500;
+const DASH_RPM_REDLINE = MANUAL_CONFIG.revLimitRPM;
 
 const PLAYER_COLORS = [
   "#ef5350", "#4285f4", "#58b76b", "#f5ce47",
@@ -121,9 +132,79 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       this.scene, this.vehiclePhysics, this.player.vehicleColor
     );
 
+    // --- Player HP / leveling ------------------------------------------
+    this.playerHealth = new PlayerHealth();
+    this.levelSystem = new LevelSystem();
+
+    this.playerHealthBar = new HealthBar(this.scene, {
+      width: 2.0, height: 0.2, yOffset: 2.3
+    });
+
+    this.damageFlashAmount = 0;
+    this.noticeTimer = 0;
+    this.gameNoticeElement = document.querySelector("#game-notice");
+    this.damageFlashElement = document.querySelector("#damage-flash");
+    this.playerHpFillElement = document.querySelector("#player-hp-fill");
+    this.playerHpTextElement = document.querySelector("#player-hp-text");
+    this.playerLevelLabelElement = document.querySelector("#player-level-label");
+    this.playerXpFillElement = document.querySelector("#player-xp-fill");
+    this.playerXpTextElement = document.querySelector("#player-xp-text");
+    this.bossHudElement = document.querySelector("#boss-hud");
+
+    this.showNotice = (text, duration = 2.5) => {
+      if (!this.gameNoticeElement) return;
+      this.gameNoticeElement.textContent = text;
+      this.gameNoticeElement.hidden = false;
+      this.noticeTimer = duration;
+    };
+
+    this.playerHealth.onDamage = (amount, source) => {
+      this.damageFlashAmount = 1;
+      this.audio.playImpact?.(6);
+      this.cameraRig.notifyImpact(6);
+    };
+
+    this.playerHealth.onDeath = () => {
+      this.showNotice("VEHICLE DISABLED — Respawning…", PLAYER_CONFIG.respawnDelay + 0.3);
+    };
+
+    this.playerHealth.onRespawn = () => {
+      this.vehiclePhysics.reset();
+      this.controller.reset();
+      this.manualController.reset();
+      this.vehicleFeedback.reset();
+      this.engineStartRequested = false;
+      this.cameraRig.reset();
+      this.showNotice("Back in the fight!", 1.5);
+    };
+
+    this.levelSystem.onLevelUp = level => {
+      this.playerHealth.addMaxHealth(PLAYER_CONFIG.hpPerLevel);
+
+      if (level % PLAYER_CONFIG.turretDamageLevelInterval === 0) {
+        this.turret.damageMultiplier += PLAYER_CONFIG.turretDamageBonusPerInterval;
+      }
+
+      this.showNotice(`★ LEVEL UP! ★  LEVEL ${level}`, 2.5);
+    };
+
     this.targetSystem = new TargetSystem(
-      this.scene, this.world.terrain, this.world.roads
+      this.scene, this.world.terrain, this.world.roads, this.playerHealth
     );
+
+    this.targetSystem.onEnemyDestroyed = target => {
+      this.levelSystem.addXP(target.xpReward);
+
+      if (target.kind === "boss") {
+        this.showNotice(`BOSS DEFEATED! +${target.xpReward} XP`, 3);
+      }
+    };
+
+    this.targetSystem.onBossSpawned = target => {
+      this.showNotice(`⚠ BOSS INCOMING: ${target.name} ⚠`, 3);
+      const bossNameElement = document.querySelector("#boss-name");
+      if (bossNameElement) bossNameElement.textContent = target.name;
+    };
 
     this.turret = new Turret(
       this.vehicle.root, this.scene, this.audio, this.player.vehicleColor
@@ -288,7 +369,23 @@ if (mobileButton) {
 
     this.speedElement = document.querySelector("#speed");
     this.gearElement = document.querySelector("#gear");
+    this.gearModeElement = document.querySelector("#gear-mode");
+    this.rpmValueElement = document.querySelector("#dash-rpm-value");
+    this.rpmFillElement = document.querySelector("#dash-rpm-fill");
+    this.clutchRowElement = document.querySelector("#dash-clutch-row");
+    this.clutchFillElement = document.querySelector("#dash-clutch-fill");
     this.debugElement = document.querySelector("#input-debug");
+
+    // The RPM arc is drawn as a stroke-dashoffset sweep around a full
+    // circle. Computed from the SVG circle's own radius (r=52, matching
+    // index.html) rather than getTotalLength(), since #hud is still
+    // display:none at construction time and geometry queries on a
+    // hidden element aren't reliable across browsers.
+    if (this.rpmFillElement) {
+      this.rpmArcLength = 2 * Math.PI * 52;
+      this.rpmFillElement.style.strokeDasharray = String(this.rpmArcLength);
+      this.rpmFillElement.style.strokeDashoffset = String(this.rpmArcLength);
+    }
 
     this.accumulator = 0;
     this.lastTime = null;
@@ -393,16 +490,114 @@ if (mobileButton) {
       this.turret.toggle();
     }
 
-    if (this.input.consumeReset()) {
-        this.vehiclePhysics.reset();
-        this.controller.reset();
-        this.manualController.reset();
-        this.vehicleFeedback.reset();
+if (this.input.consumeReset()) {
+  /*
+   * Collect the current positions of every other player.
+   *
+   * MultiplayerClient exposes remote vehicles through:
+   * this.multiplayer.remotes
+   *
+   * We deliberately make this defensive because the game can also
+   * run in offline/local mode.
+   */
+  const otherPlayerPositions = [];
 
-        this.engineStartRequested = false;
-        this.cameraRig.reset();
-        this.accumulator = 0;
+  if (this.multiplayer?.remotes) {
+    for (const remote of this.multiplayer.remotes.values()) {
+      if (!remote) continue;
+
+      /*
+       * RemoteVehicle implementations can expose their position
+       * through different properties. Try the most likely ones.
+       */
+      const object =
+        remote.root ??
+        remote.vehicle?.root ??
+        remote.mesh ??
+        remote.object ??
+        remote.model;
+
+      if (object?.position) {
+        otherPlayerPositions.push({
+          x: object.position.x,
+          y: object.position.y,
+          z: object.position.z
+        });
+
+        continue;
+      }
+
+      /*
+       * Some remote implementations keep the latest network state.
+       */
+      const state =
+        remote.currentState ??
+        remote.state ??
+        remote.targetState ??
+        remote.latestState;
+
+      if (state?.position?.length >= 3) {
+        otherPlayerPositions.push({
+          x: Number(state.position[0]),
+          y: Number(state.position[1]),
+          z: Number(state.position[2])
+        });
+      }
     }
+  }
+
+  /*
+   * Choose a different spawn and make sure it is not too close
+   * to another multiplayer player.
+   */
+  const respawn = this.vehiclePhysics.respawn(
+    otherPlayerPositions
+  );
+
+  /*
+   * Reset all driving systems.
+   */
+  this.controller.reset();
+  this.manualController.reset();
+  this.vehicleFeedback.reset();
+
+  this.engineStartRequested = false;
+
+  /*
+   * Reset camera position/orientation.
+   */
+  this.cameraRig.reset();
+
+  /*
+   * Prevent old accumulated simulation time from producing
+   * a large physics jump after the teleport.
+   */
+  this.accumulator = 0;
+
+  /*
+   * Make sure the local visual vehicle immediately follows
+   * the new physics position.
+   */
+  this.vehicle.sync();
+
+  /*
+   * Optional feedback.
+   *
+   * This lets the player know that R actually selected another
+   * spawn location.
+   */
+  if (respawn?.minimumDistanceUsed > 0) {
+    this.showNotice(
+      "RESPAWNED AT A SAFE LOCATION",
+      1.2
+    );
+  } else {
+    this.showNotice(
+      "RESPAWNED",
+      1.2
+    );
+  }
+}
 
     // Keep every remote player's collider where it's currently being
     // rendered before stepping physics against it this frame.
@@ -451,8 +646,52 @@ if (mobileButton) {
     this.deliverySystem.update(this.vehiclePhysics.body.position, dt);
     this.world.destructibles.update(dt);
 
-    this.targetSystem.update(dt, this.vehiclePhysics.body.position);
+    this.targetSystem.update(dt, this.vehiclePhysics.body.position, this.camera, this.audio);
     this.turret.update(dt, this.targetSystem);
+    this.playerHealth.update(dt);
+
+    this.playerHealthBar.setRatio(this.playerHealth.ratio);
+    this.playerHealthBar.updateTransform(this.vehicle.root.position, this.camera);
+
+    if (this.bossHudElement) {
+      this.bossHudElement.hidden = !this.targetSystem.bossActive;
+    }
+
+    if (this.damageFlashAmount > 0) {
+      this.damageFlashAmount = Math.max(0, this.damageFlashAmount - dt / 0.4);
+      if (this.damageFlashElement) {
+        this.damageFlashElement.hidden = this.damageFlashAmount <= 0;
+        this.damageFlashElement.style.opacity = String(this.damageFlashAmount * 0.45);
+      }
+    }
+
+    if (this.noticeTimer > 0) {
+      this.noticeTimer -= dt;
+      if (this.noticeTimer <= 0 && this.gameNoticeElement) {
+        this.gameNoticeElement.hidden = true;
+      }
+    }
+
+    if (this.playerHpFillElement) {
+      this.playerHpFillElement.style.width =
+        `${Math.max(0, this.playerHealth.ratio * 100)}%`;
+    }
+    if (this.playerHpTextElement) {
+      this.playerHpTextElement.textContent =
+        `${Math.round(this.playerHealth.health)} / ${Math.round(this.playerHealth.maxHealth)}`;
+    }
+    if (this.playerLevelLabelElement) {
+      this.playerLevelLabelElement.textContent = `LV ${this.levelSystem.level}`;
+    }
+    if (this.playerXpFillElement) {
+      const required = this.levelSystem.xpRequired();
+      this.playerXpFillElement.style.width =
+        `${Math.max(0, Math.min(100, (this.levelSystem.xp / required) * 100))}%`;
+    }
+    if (this.playerXpTextElement) {
+      this.playerXpTextElement.textContent =
+        `${Math.floor(this.levelSystem.xp)} / ${this.levelSystem.xpRequired()}`;
+    }
 
 const speed = this.vehiclePhysics.body.velocity.length();
 const manual = this.drivingMode === "manual";
@@ -553,8 +792,28 @@ this.audio.playFeedback(feedback.events);
 this.renderer.render(this.scene, this.camera);
 
     if (timeMs - this.lastHudTime >= 100) {
-      const speed = this.vehiclePhysics.body.velocity.length() * 3.6;
-      this.speedElement.textContent = `${Math.round(speed)} km/h`;
+      const speedKmh = this.vehiclePhysics.body.velocity.length() * 3.6;
+      this.speedElement.textContent = `${Math.round(speedKmh)}`;
+
+      // Tachometer arc + digital RPM readout share the same
+      // presentationRPM already computed above for audio/vehicle
+      // feedback this frame — just mapped onto the gauge's sweep.
+      if (this.rpmFillElement && this.rpmArcLength) {
+        const frac = Math.max(0, Math.min(1, presentationRPM / DASH_RPM_MAX));
+
+        this.rpmFillElement.style.strokeDashoffset =
+          String(this.rpmArcLength * (1 - frac));
+
+        this.rpmFillElement.classList.toggle(
+          "dash-rpm-redline",
+          presentationRPM >= DASH_RPM_REDLINE
+        );
+      }
+
+      if (this.rpmValueElement) {
+        this.rpmValueElement.textContent = `${Math.round(presentationRPM)} RPM`;
+      }
+
       if (this.drivingMode === "manual") {
   const drivetrain = this.manualController.drivetrain;
   const state = this.manualController.telemetry;
@@ -562,21 +821,36 @@ this.renderer.render(this.scene, this.camera);
   const gearLabel = gear =>
     gear === -1 ? "R" : gear === 0 ? "N" : String(gear);
 
-  this.gearElement.textContent =
-    `REALISTIC PROTOTYPE · ${gearLabel(drivetrain.engagedGear)}`;
+  this.gearElement.textContent = gearLabel(drivetrain.engagedGear);
+  if (this.gearModeElement) this.gearModeElement.textContent = "MANUAL";
 
   this.engineStateElement.textContent =
-    `${Math.round(drivetrain.rpm)} RPM · ` +
-    `${drivetrain.engineRunning ? "RUNNING" : "STOPPED"} · ` +
-    `Clutch ${Math.round(input.clutch * 100)}%`;
+    drivetrain.engineRunning ? "RUNNING" : "STOPPED";
+
+  this.engineStateElement.classList.toggle(
+    "dash-engine-pill--off",
+    !drivetrain.engineRunning
+  );
+
+  if (this.clutchRowElement) this.clutchRowElement.hidden = false;
+
+  if (this.clutchFillElement) {
+    this.clutchFillElement.style.width =
+      `${Math.round(input.clutch * 100)}%`;
+  }
 
   this.drivingStatusElement.textContent =
     state?.message ?? drivetrain.message;
 } else {
   this.gearElement.textContent =
-    `ARCADE · ${this.controller.direction === -1 ? "R" : "D"}`;
+    this.controller.direction === -1 ? "R" : "D";
 
-  this.engineStateElement.textContent = "Arcade drivetrain";
+  if (this.gearModeElement) this.gearModeElement.textContent = "ARCADE";
+
+  this.engineStateElement.textContent = "RUNNING";
+  this.engineStateElement.classList.remove("dash-engine-pill--off");
+
+  if (this.clutchRowElement) this.clutchRowElement.hidden = true;
 }
 
       this.controlStatusElement.textContent = [

@@ -40,6 +40,70 @@ export const TARGET_CONFIG = {
   respawnDelay: 4
 };
 
+// ---------------------------------------------------------------------------
+// Enemy/boss gameplay tuning. The "Target" entity (Target.js) is the same
+// class for both -- `kind: "normal" | "boss"` picks which half of this
+// config it reads. Kept separate from TARGET_CONFIG above (still used for
+// hover height / spawn distances / respawn) so nothing there needs to move.
+// ---------------------------------------------------------------------------
+export const ENEMY_CONFIG = {
+  maxEnemies: 10,
+
+  normal: {
+    maxHealth: 60,
+    xpReward: 25,
+    detectionRange: 45,
+    attackRange: 40,
+    attackDamage: 10,
+    fireRate: 1.2 // seconds between shots
+  },
+
+  boss: {
+    maxHealth: 1000,
+    xpReward: 500,
+    detectionRange: 100,
+    attackRange: 80,
+    burstDamagePerHit: 12,
+    burstCount: 4,
+    burstInterval: 0.18, // seconds between projectiles in a burst
+    attackCooldown: 5.5, // seconds between bursts
+    telegraphDuration: 1.1, // warning time before the burst fires
+    respawnDelay: 60,
+    initialSpawnDelay: 20, // grace period before the first boss appears
+    scale: 3.2
+  },
+
+  spawn: {
+    minDistance: 18,
+    maxDistance: 48,
+    bossMinDistance: 60,
+    bossMaxDistance: 110,
+
+    // Matches VehiclePhysics.reset()'s spawn point -- fixed in world space,
+    // never re-derived from the player's current position, so the zone
+    // stays protected even after the player drives away and comes back.
+    protectedSpawnCenter: { x: -3, z: -65 },
+    protectedSpawnRadius: 35
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Player HP, leveling and progression. Centralized here alongside the
+// enemy config since both feed the same combat loop.
+// ---------------------------------------------------------------------------
+export const PLAYER_CONFIG = {
+  maxHealth: 100,
+  respawnDelay: 2.5, // seconds spent in the death state before respawning
+  hpPerLevel: 10, // + max HP each level
+  turretDamageLevelInterval: 3, // every N levels...
+  turretDamageBonusPerInterval: 0.05 // ...+5% turret damage
+};
+
+export const LEVEL_CONFIG = {
+  baseXP: 100,
+  curveExponent: 1.35 // xpRequired(level) = baseXP * level^curveExponent
+};
+
 // Roof anchor points, in each vehicle's own local space. The local player's
 // Vehicle.js roof sits a little higher (panoramic glass roof) than the
 // lighter-weight RemoteVehicle.js body, so each gets its own anchor. Both

@@ -79,39 +79,464 @@ button:disabled {
 #hud {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 1.2rem);
   left: calc(env(safe-area-inset-left, 0px) + 1.2rem);
-  max-width: min(300px, calc(100vw - 2rem));
+  max-width: min(340px, calc(100vw - 2rem));
 }
 
-#speed {
-  display: block;
-  font-size: clamp(1.5rem, 5vw, 2.2rem);
+/* ==========================================================================
+   Vehicle dashboard / instrument cluster. Reads the same speed, gear,
+   RPM, and clutch values the HUD always has — see Game.js's frame() —
+   just laid out and rendered like a real cluster instead of stacked
+   plain-text rows. Flex-wrap (not media-query overrides) is what keeps
+   the gear badge + speed dial + status column from ever colliding as
+   the panel narrows.
+   ========================================================================== */
+
+.dash {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.5rem, 1.6vh, 0.75rem);
 }
 
-#gear {
+.dash-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(0.5rem, 2vw, 0.9rem);
+}
+
+.dash-gear-badge {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 3rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.6rem;
+  background: #ffffff0a;
+  border: 1px solid #ffffff1a;
+}
+
+.dash-gear-mode {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #9fb4c6;
+}
+
+.dash-gear-value {
+  font-size: clamp(1.3rem, 4vw, 1.8rem);
+  font-weight: 800;
+  line-height: 1;
   color: #7de2bf;
-  margin-bottom: 0.6rem;
+  font-variant-numeric: tabular-nums;
 }
 
-#delivery-status {
-  display: block;
-  color: #ffce7a;
-  font-size: 0.85rem;
-  margin-top: 0.3rem;
+.dash-speed-dial {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(78px, 19vw, 108px);
+  height: clamp(78px, 19vw, 108px);
 }
 
-#delivery-count {
-  display: block;
-  color: #4be3a0;
-  margin-bottom: 0.4rem;
+.dash-rpm-arc {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
 }
 
-#turret-status {
-  display: block;
-  color: #6fd0ff;
+.dash-rpm-track {
+  fill: none;
+  stroke: #ffffff16;
+  stroke-width: 6;
+}
+
+.dash-rpm-fill {
+  fill: none;
+  stroke: #6fd0ff;
+  stroke-width: 6;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.12s ease-out, stroke 0.2s ease;
+}
+
+.dash-rpm-fill.dash-rpm-redline {
+  stroke: #ff6c65;
+}
+
+.dash-speed-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.dash-speed-value {
+  font-size: clamp(1.4rem, 4.6vw, 2rem);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-speed-unit {
+  margin-top: 0.15rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: #9fb4c6;
+}
+
+.dash-status-col {
+  flex: 1 1 110px;
+  min-width: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+.dash-engine-pill {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: #7de2bf22;
+  color: #7de2bf;
+  border: 1px solid #7de2bf40;
+  white-space: nowrap;
+}
+
+.dash-engine-pill--off {
+  background: #f5a3a322;
+  color: #f5a3a3;
+  border-color: #f5a3a340;
+}
+
+.dash-rpm-value {
+  font-size: 0.72rem;
+  color: #c7dbf6;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-clutch-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.dash-clutch-row[hidden] { display: none; }
+
+.dash-clutch-label {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  color: #9fb4c6;
+}
+
+.dash-clutch-track {
+  flex: 1 1 auto;
+  height: 0.4rem;
+  min-width: 40px;
+  border-radius: 999px;
+  background: #ffffff1a;
+  overflow: hidden;
+}
+
+.dash-clutch-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f5d68a, #ffce7a);
+  transition: width 0.1s ease-out;
+}
+
+.dash-secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dash-pill {
   font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.dash-pill-delivery { color: #ffce7a; }
+.dash-pill-score { color: #4be3a0; }
+
+.dash-pill-turret {
+  color: #6fd0ff;
+  font-size: 0.75rem;
   letter-spacing: 0.03em;
+}
+
+.dash-hints { margin-top: 0.1rem; }
+
+/* ==========================================================================
+   Combat HUD: player HP + level/XP (top-right, clear of #hud, #open-menu,
+   #chat-panel, and every mobile touch control, which all live bottom/left).
+   ========================================================================== */
+
+#combat-hud {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  right: calc(env(safe-area-inset-right, 0px) + 1rem);
+  z-index: 4;
+  padding: clamp(0.6rem, 2vw, 0.9rem) clamp(0.8rem, 2.4vw, 1.1rem);
+  border: 1px solid #ffffff24;
+  border-radius: 0.8rem;
+  background: #0c1623d9;
+  backdrop-filter: blur(8px);
+  width: min(220px, calc(100vw - 2rem));
+  font-size: 0.85rem;
+}
+
+#combat-hud[hidden] { display: none; }
+
+.combat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.4rem;
 }
+
+.combat-row:last-of-type { margin-bottom: 0; }
+
+.combat-row-label {
+  flex: 0 0 auto;
+  min-width: 2.4rem;
+  font-weight: 700;
+  color: #cfe8ff;
+}
+
+.combat-row-value {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: #9fb4c6;
+  white-space: nowrap;
+}
+
+.combat-bar-track {
+  flex: 1 1 auto;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: #ffffff1a;
+  overflow: hidden;
+}
+
+.combat-bar-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  transition: width 0.15s ease-out;
+}
+
+.combat-bar-hp {
+  background: linear-gradient(90deg, #ff6c65, #7de2bf);
+}
+
+.combat-bar-xp {
+  background: linear-gradient(90deg, #4285f4, #87f4cc);
+}
+
+#boss-hud {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid #ffffff24;
+  text-align: center;
+}
+
+#boss-hud[hidden] { display: none; }
+
+#boss-name {
+  color: #ff6c65;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+}
+
+/* ==========================================================================
+   Transient notices: level-up, boss spawn/defeat, death/respawn.
+   ========================================================================== */
+
+#game-notice {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 0.7rem 1.4rem;
+  border: 1px solid #ffffff33;
+  border-radius: 0.8rem;
+  background: #0c1623ea;
+  backdrop-filter: blur(8px);
+  color: #ffe28a;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  max-width: min(420px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+#game-notice[hidden] { display: none; }
+
+#damage-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    #b3241f 100%
+  );
+}
+
+#damage-flash[hidden] { display: none; }
+
+/* ==========================================================================
+   Online Players panel — minimized by default. A small always-visible pill
+   (icon + live count) expands into the full status/leaderboard card. Lives
+   in the top-left column, below #open-menu, and never grows large enough
+   to compete with the driving HUD: --op-reserved (set from JS to the
+   panel's actual rendered bottom edge, in either state) is what keeps the
+   mobile HUD from ever sitting underneath it — see the
+   body.mobile-controls-active #hud rule further down.
+   ========================================================================== */
+
+.op-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 4.6rem);
+  left: calc(env(safe-area-inset-left, 0px) + 1rem);
+  z-index: 9;
+  width: min(280px, calc(100vw - 2rem));
+  max-height: min(60vh, 420px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ffffff24;
+  border-radius: 0.7rem;
+  background: #0c1623df;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px #00000040;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow: hidden;
+  transition: width 0.22s ease, box-shadow 0.22s ease;
+}
+
+.op-toggle {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  color: #eef4ff;
+  font: inherit;
+  font-weight: 700;
+  border-radius: 0.7rem;
+  transition: background 0.12s ease;
+}
+
+.op-toggle:hover { background: #ffffff10; }
+
+.op-toggle:focus-visible {
+  outline: 2px solid #7de2bf;
+  outline-offset: -2px;
+}
+
+.op-toggle-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.op-toggle-count {
+  flex: 1 1 auto;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: #cdeeff;
+  white-space: nowrap;
+}
+
+.op-toggle-chevron {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  color: #9fb4c6;
+  transition: transform 0.22s ease;
+}
+
+.op-panel--expanded .op-toggle-chevron {
+  transform: rotate(180deg);
+}
+
+.op-panel--expanded .op-toggle {
+  border-radius: 0.7rem 0.7rem 0 0;
+  border-bottom: 1px solid #ffffff1a;
+}
+
+/* Grid-row collapse trick: animates smoothly to the content's natural
+   height without JS having to measure or hardcode it. */
+.op-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.26s ease;
+}
+
+.op-panel--expanded .op-body {
+  grid-template-rows: 1fr;
+}
+
+.op-body-inner {
+  min-height: 0;
+  overflow: hidden auto;
+  padding: 0 0.75rem;
+}
+
+.op-panel--expanded .op-body-inner {
+  padding: 0.65rem 0.75rem 0.8rem;
+}
+
+.op-status {
+  font-weight: 700;
+  color: #7de2bf;
+}
+
+.op-count {
+  margin-top: 0.15rem;
+  color: #cdeeff;
+}
+
+.op-details {
+  display: block;
+  margin-top: 0.3rem;
+  opacity: 0.75;
+}
+
+.op-disconnect {
+  display: block;
+  margin: 0.55rem 0 0;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.75rem;
+}
+
+.op-leaderboard-heading {
+  display: block;
+  margin-top: 0.6rem;
+}
+
+.op-leaderboard-list {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.op-leaderboard-list[hidden],
+.op-leaderboard-empty[hidden] { display: none; }
 
 small {
   display: block;
@@ -180,12 +605,6 @@ pre {
   color: #c7dbf6;
   font-size: 0.8rem;
   line-height: 1.5;
-}
-
-#engine-state {
-  margin-bottom: 0.6rem;
-  font-size: 0.85rem;
-  color: #d7e5f8;
 }
 
 .presentation-setting {
@@ -480,12 +899,21 @@ pre {
 }
 
 #chat-log {
-  flex: 1;
-  height: var(--chat-log-height);
+  flex: 0 1 auto;
+  height: auto;
+  max-height: 200px;
+  min-height: 0;
+
   overflow-y: auto;
+  overflow-x: hidden;
+
   padding: 0.5rem 0.8rem;
-  transition: height 0.18s ease;
+
   scrollbar-width: thin;
+  scrollbar-color: #5d7188 #ffffff08;
+
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chat-entry {
@@ -595,10 +1023,16 @@ body.mobile-controls-active #chat-panel.chat-size-expanded {
    ========================================================================== */
 
 body.mobile-controls-active #hud {
-  top: calc(env(safe-area-inset-top, 0px) + 4.4rem);
+  /* --op-reserved (set by MultiplayerClient) always reflects the online
+     players panel's real rendered bottom edge, minimized or expanded, so
+     the dashboard is pushed clear of it instead of risking an overlap. */
+
+  top: var(--op-reserved, calc(env(safe-area-inset-top, 0px) + 4.4rem));
   bottom: auto;
   left: calc(env(safe-area-inset-left, 0px) + 1rem);
+
   max-width: min(200px, calc(100vw - 2rem));
+  transition: top 0.22s ease;
 }
 
 /* Keyboard-binding reminders are meaningless with touch controls and are
@@ -606,6 +1040,53 @@ body.mobile-controls-active #hud {
 body.mobile-controls-active #hud small {
   display: none;
 }
+
+@media screen and (max-width: 800px) {
+
+  body.mobile-controls-active #hud {
+  top: auto;
+  bottom: 0;
+  left: 35%;
+  transform: scale(0.8);
+}
+  
+  .dash-status-col{ display:none;}
+  
+  
+  .dash-cluster{
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+    #chat-show{
+    top: 12% !important;
+    bottom: auto;
+    left: auto;
+    right: auto;
+  }
+
+  #chat-panel{
+    top: 12% !important;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    width: 150px;
+  }
+
+  #chat-show{
+    right: 0;
+    left: auto;
+    bottom: auto;
+  }
+
+  .op-panel{
+    width: 150px !important;
+  }
+}
+
+#start-engine{display: none !important;}
+
+
 
 /* ==========================================================================
    Mobile touch driving controls
@@ -648,6 +1129,7 @@ body.mobile-controls-active #hud small {
   border: 2px solid #ffffff2e;
   background: radial-gradient(circle at 50% 40%, #17263880, #0c1623cc);
   backdrop-filter: blur(6px);
+  box-shadow: inset 0 0 0 8px #ffffff08, inset 0 0 30px #00000050;
   pointer-events: auto;
   touch-action: none;
   -webkit-user-select: none;
@@ -668,6 +1150,28 @@ body.mobile-controls-active #hud small {
   box-shadow: 0 6px 18px #0007;
   transition: box-shadow 0.15s ease;
   will-change: transform;
+}
+
+/* Grip hub + crossbar spokes, purely decorative — gives the knob the
+   silhouette of a small steering wheel rather than a plain disc. */
+.mc-steering-knob::before {
+  content: "";
+  position: absolute;
+  inset: 32%;
+  border-radius: 999px;
+  background: radial-gradient(circle at 38% 32%, #4a6f8f, #14212e);
+  box-shadow: inset 0 0 6px #0009, 0 1px 0 #ffffff1a;
+}
+
+.mc-steering-knob::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: #ffffff26;
+  transform: translateY(-50%);
 }
 
 .mc-steering-track:active .mc-steering-knob {
@@ -705,16 +1209,29 @@ body.mobile-controls-active #hud small {
   height: clamp(72px, 15vh, 108px);
   border-radius: 0.9rem;
   border: 1px solid #ffffff2e;
-  background: #17263880;
+  background: linear-gradient(180deg, #1c2d4180, #14202f80);
   backdrop-filter: blur(6px);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.2rem;
   color: #eef4ffcc;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.05em;
+  box-shadow: inset 0 1px 0 #ffffff14, 0 6px 14px #00000030;
   transition: background 0.08s ease, transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.mc-pedal-icon {
+  font-size: 1.15em;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.mc-pedal-label {
+  font-size: 0.68em;
 }
 
 .mc-pedal[hidden] { display: none; }
@@ -925,6 +1442,29 @@ body.mobile-controls-active #hud small {
 
   #hud small { font-size: 0.72rem; }
 
+  .dash { gap: 0.4rem; }
+  .dash-secondary { gap: 0.18rem; }
+  .dash-pill { font-size: 0.72rem; }
+
+  .op-panel {
+    top: calc(env(safe-area-inset-top, 0px) + 4rem);
+    width: min(220px, calc(100vw - 1.6rem));
+    font-size: 0.75rem;
+  }
+
+  #combat-hud {
+    width: min(170px, calc(100vw - 1.6rem));
+    padding: 0.55rem 0.7rem;
+    font-size: 0.75rem;
+  }
+
+  .combat-row-value { font-size: 0.65rem; }
+
+  #game-notice {
+    font-size: 0.85rem;
+    padding: 0.55rem 1rem;
+  }
+
   #debug {
     max-width: calc(100vw - 1.6rem);
     max-height: 40vh;
@@ -980,6 +1520,13 @@ body.mobile-controls-active #hud small {
     font-size: 0.78rem;
     padding: 0.5rem 0.8rem;
   }
+
+  .dash-speed-dial {
+    width: clamp(64px, 18vw, 84px);
+    height: clamp(64px, 18vw, 84px);
+  }
+
+  .dash-gear-badge { min-width: 2.6rem; }
 }
 
 /* Landscape phones: controls need to be compact vertically since the
@@ -1013,11 +1560,46 @@ body.mobile-controls-active #hud small {
     padding: 0.6rem 0.7rem;
   }
 
+  .dash { gap: 0.35rem; }
+
+  .dash-speed-dial {
+    width: clamp(56px, 20vh, 74px);
+    height: clamp(56px, 20vh, 74px);
+  }
+
+  .dash-speed-value { font-size: clamp(1.05rem, 4.5vh, 1.4rem); }
+  .dash-gear-value { font-size: clamp(1rem, 4vh, 1.3rem); }
+  .dash-gear-badge { min-width: 2.4rem; padding: 0.25rem 0.4rem; }
+  .dash-pill { font-size: 0.68rem; }
+  .dash-rpm-value { font-size: 0.62rem; }
+  .dash-engine-pill { font-size: 0.6rem; padding: 0.1rem 0.4rem; }
+
+  #hud #start-engine {
+    margin: 0.35rem 0;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.72rem;
+  }
+
   body.mobile-controls-active #hud {
-    top: calc(env(safe-area-inset-top, 0px) + 3.6rem);
+    top: var(--op-reserved, calc(env(safe-area-inset-top, 0px) + 3.6rem));
+  }
+
+  .op-panel {
+    top: calc(env(safe-area-inset-top, 0px) + 3.2rem);
+    max-height: 50vh;
+    font-size: 0.72rem;
   }
 
   #hud small { display: none; }
+
+  #combat-hud {
+    width: min(150px, 34vw);
+    padding: 0.45rem 0.6rem;
+    font-size: 0.68rem;
+  }
+
+  .combat-row { gap: 0.3rem; margin-bottom: 0.25rem; }
+  .combat-row-label { min-width: 1.8rem; }
 
   #chat-panel { --chat-log-height: 60px; }
   #chat-panel.chat-size-normal { --chat-log-height: 90px; }

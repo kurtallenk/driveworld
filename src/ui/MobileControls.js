@@ -57,9 +57,9 @@ export class MobileControls {
     this.pedalsEl = document.createElement("div");
     this.pedalsEl.className = "mc-pedals";
 
-    this.clutchEl = this.makePedal("CLUTCH", "mc-pedal-clutch");
-    this.brakeEl = this.makePedal("BRAKE", "mc-pedal-brake");
-    this.accelEl = this.makePedal("GAS", "mc-pedal-accel");
+    this.clutchEl = this.makePedal("CLUTCH", "mc-pedal-clutch", "◆");
+    this.brakeEl = this.makePedal("BRAKE", "mc-pedal-brake", "■");
+    this.accelEl = this.makePedal("GAS", "mc-pedal-accel", "▲");
 
     this.pedalsEl.append(this.clutchEl, this.brakeEl, this.accelEl);
 
@@ -124,10 +124,13 @@ export class MobileControls {
     document.body.append(this.root);
   }
 
-  makePedal(label, className) {
+  makePedal(label, className, icon = "") {
     const el = document.createElement("div");
     el.className = `mc-pedal ${className}`;
-    el.innerHTML = `<span>${label}</span>`;
+    el.innerHTML = icon
+      ? `<span class="mc-pedal-icon" aria-hidden="true">${icon}</span>` +
+        `<span class="mc-pedal-label">${label}</span>`
+      : `<span class="mc-pedal-label">${label}</span>`;
     return el;
   }
 

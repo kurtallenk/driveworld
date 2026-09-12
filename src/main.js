@@ -71,6 +71,7 @@ startButton.addEventListener("click", async () => {
     game.frame(performance.now());
 
     document.querySelector("#hud").hidden = false;
+    document.querySelector("#combat-hud").hidden = false;
     loading.hidden = true;
 
     game.start();

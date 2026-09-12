@@ -55,19 +55,80 @@
     </section>
 
     <section id="hud" hidden>
-      <strong id="speed">0 km/h</strong>
-      <div id="gear">ARCADE · D</div>
-      <div id="engine-state">Arcade drivetrain</div>
-      <div id="delivery-status">Drive to a glowing beacon to pick up a delivery</div>
-      <strong id="delivery-count">Deliveries: 0 · Score: 0</strong>
-      <div id="turret-status">TURRET: OFFLINE</div>
-      <button id="start-engine" type="button" disabled>
-  Start engine
-</button>
-      <small>Keyboard Arcade: W (Gas) · S (Brake/Reverse) · A/D (Steer)</small>
-      <small>Space handbrake · R reset · F turret</small>
-      <small>C camera · ESC settings · Enter chat</small>
+      <div class="dash">
+        <div class="dash-cluster">
+          <div class="dash-gear-badge">
+            <span id="gear-mode" class="dash-gear-mode">ARCADE</span>
+            <span id="gear" class="dash-gear-value">D</span>
+          </div>
+
+          <div class="dash-speed-dial">
+            <svg class="dash-rpm-arc" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="dash-rpm-track" cx="60" cy="60" r="52" />
+              <circle
+                id="dash-rpm-fill"
+                class="dash-rpm-fill"
+                cx="60" cy="60" r="52"
+              />
+            </svg>
+            <div class="dash-speed-readout">
+              <strong id="speed" class="dash-speed-value">0</strong>
+              <span class="dash-speed-unit">km/h</span>
+            </div>
+          </div>
+
+          <div class="dash-status-col">
+            <div id="engine-state" class="dash-engine-pill">ARCADE</div>
+            <div id="dash-rpm-value" class="dash-rpm-value">900 RPM</div>
+            <div id="dash-clutch-row" class="dash-clutch-row" hidden>
+              <span class="dash-clutch-label">Clutch</span>
+              <div class="dash-clutch-track">
+                <div id="dash-clutch-fill" class="dash-clutch-fill"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-secondary">
+          <div id="delivery-status" class="dash-pill dash-pill-delivery">Drive to a glowing beacon to pick up a delivery</div>
+          <strong id="delivery-count" class="dash-pill dash-pill-score">Deliveries: 0 · Score: 0</strong>
+          <div id="turret-status" class="dash-pill dash-pill-turret">TURRET: OFFLINE</div>
+        </div>
+
+        <button id="start-engine" type="button" disabled>
+          Start engine
+        </button>
+
+        <div class="dash-hints">
+          <small>Keyboard Arcade: W (Gas) · S (Brake/Reverse) · A/D (Steer)</small>
+          <small>Space handbrake · R reset · F turret</small>
+          <small>C camera · ESC settings · Enter chat</small>
+        </div>
+      </div>
     </section>
+
+    <section id="combat-hud" hidden>
+      <div class="combat-row">
+        <span class="combat-row-label">HP</span>
+        <div class="combat-bar-track">
+          <div id="player-hp-fill" class="combat-bar-fill combat-bar-hp"></div>
+        </div>
+        <span id="player-hp-text" class="combat-row-value">100 / 100</span>
+      </div>
+      <div class="combat-row">
+        <span id="player-level-label" class="combat-row-label">LV 1</span>
+        <div class="combat-bar-track">
+          <div id="player-xp-fill" class="combat-bar-fill combat-bar-xp"></div>
+        </div>
+        <span id="player-xp-text" class="combat-row-value">0 / 100</span>
+      </div>
+      <div id="boss-hud" hidden>
+        <div id="boss-name">WAR MACHINE</div>
+      </div>
+    </section>
+
+    <div id="game-notice" hidden></div>
+    <div id="damage-flash" hidden></div>
 
 <details id="debug" hidden>
 

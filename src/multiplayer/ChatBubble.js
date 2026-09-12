@@ -9,7 +9,7 @@ const LINE_HEIGHT_PX = 40;
 const PAD_X_PX = 26;
 const PAD_TOP_PX = 22;
 const PAD_BOTTOM_PX = 22;
-const TAIL_PX = 16;
+const TAIL_PX = 116;
 const MIN_TEXT_WIDTH_PX = 60;
 const MAX_TEXT_WIDTH_PX = 420;
 
