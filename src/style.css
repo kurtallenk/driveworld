@@ -2569,3 +2569,25 @@ body.mobile-controls-active .dash-engine-pill {
 .name-entry input {
   touch-action: manipulation;
 }
+
+.orientation-warning {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: #050505;
+    color: white;
+}
+
+@media screen and (orientation: landscape) and (max-width: 900px) {
+    .orientation-warning {
+        display: flex;
+    }
+
+    .game-container {
+        display: none !important;
+    }
+}
