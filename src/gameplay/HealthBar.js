@@ -57,7 +57,7 @@ export class HealthBar {
     this.bg = new THREE.Mesh(assets.bgGeometry, assets.bgMaterial.clone());
     this.bg.renderOrder = 15;
     this.bg.scale.set(width + 0.05, height + 0.05, 1);
-    this.bg.position.x = (-width / (2 - 0.0325))+1;
+    this.bg.position.x = 0;
 
     this.fill = new THREE.Mesh(assets.fillGeometry, assets.fillMaterial.clone());
     this.fill.renderOrder = 16;
