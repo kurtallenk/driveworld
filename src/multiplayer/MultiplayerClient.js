@@ -483,6 +483,11 @@ export class MultiplayerClient {
         health: game.playerHealth?.health ?? 0,
         maxHealth: game.playerHealth?.maxHealth ?? 0,
 
+        // Drives the destroyed/wreck visuals on other players' cars (see
+        // RemoteVehicle.js / VehicleDestruction.js). Reported the same way
+        // health is above -- purely presentational, never authoritative.
+        dead: game.playerHealth?.dead === true,
+
         // Drives the brighter/faster exhaust look on other players' cars
         // (see ExhaustSystem) -- purely presentational, not re-simulated.
         turbo: game.turbo?.active === true

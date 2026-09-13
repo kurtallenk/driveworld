@@ -322,6 +322,7 @@ function initialState(spawn) {
     turret: initialTurretState(),
     health: 100,
     maxHealth: 100,
+    dead: false,
     turbo: false
   };
 }
@@ -425,6 +426,10 @@ function validateState(raw) {
     // for anything beyond drawing an HP bar.
     maxHealth: bounded(raw.maxHealth, 1, 100000, 100),
     health: bounded(raw.health, 0, bounded(raw.maxHealth, 1, 100000, 100)),
+
+    // Destroyed/wreck flag -- same "client-reported presentation value"
+    // treatment as health above (see MultiplayerClient.sendState).
+    dead: raw.dead === true,
 
     turbo: raw.turbo === true
   };

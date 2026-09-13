@@ -93,7 +93,7 @@ export const ENEMY_CONFIG = {
 // ---------------------------------------------------------------------------
 export const PLAYER_CONFIG = {
   maxHealth: 100,
-  respawnDelay: 2.5, // seconds spent in the death state before respawning
+  respawnDelay: 5, // seconds spent in the death state before respawning -- gives the destruction sequence (explosion, wreck, death screen countdown) room to read
   hpPerLevel: 10, // + max HP each level
   turretDamageLevelInterval: 3, // every N levels...
   turretDamageBonusPerInterval: 0.05 // ...+5% turret damage

@@ -69,6 +69,18 @@ export class Turret {
     });
   }
 
+  // Called once when the player dies (see Game.js's playerHealth.onDeath).
+  // Interrupts any in-progress deploy and starts the existing retract
+  // animation -- reuses UNDEPLOYING's progress-1-to-0 sweep as the "turret
+  // droops and stows" death visual instead of adding a separate animation.
+  // Also drops the current target so no more shots line up while retracting.
+  forceRetract() {
+    if (this.state !== STATE.UNDEPLOYED && this.state !== STATE.UNDEPLOYING) {
+      this.state = STATE.UNDEPLOYING;
+    }
+    this.target = null;
+  }
+
   // Edge-triggered: call once per F keypress, never while held.
   toggle() {
     if (this.state === STATE.UNDEPLOYED || this.state === STATE.UNDEPLOYING) {

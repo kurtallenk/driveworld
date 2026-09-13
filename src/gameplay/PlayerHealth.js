@@ -23,6 +23,12 @@ export class PlayerHealth {
     return this.maxHealth > 0 ? this.health / this.maxHealth : 0;
   }
 
+  // Named alias for `dead` -- reads clearer at call sites that care about
+  // the vehicle's state (network sync, UI) rather than a raw boolean.
+  get state() {
+    return this.dead ? "destroyed" : "alive";
+  }
+
   applyDamage(amount, source = null) {
     if (this.dead || !Number.isFinite(amount) || amount <= 0) return;
 

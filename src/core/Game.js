@@ -23,6 +23,7 @@ import { HealthBar } from "../gameplay/HealthBar.js";
 import { MANUAL_CONFIG } from "../vehicle/ManualDrivetrain.js";
 import { TurboSystem, applyTurboToControls } from "../vehicle/TurboSystem.js";
 import { ExhaustSystem } from "../vehicle/ExhaustSystem.js";
+import { VehicleDestruction } from "../vehicle/VehicleDestruction.js";
 
 // Tachometer scale for the dashboard's RPM arc. Redline comes straight
 // from the manual drivetrain's own config, so the gauge always agrees
@@ -134,6 +135,10 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       this.scene, this.vehiclePhysics, this.player.vehicleColor
     );
 
+    // Wreck visuals (charred materials, smoke/spark/flash, flickering
+    // lights) driven by playerHealth.onDeath/onRespawn below.
+    this.vehicleDestruction = new VehicleDestruction(this.scene, this.vehicle.root);
+
     // --- Turbo / boost + exhaust -----------------------------------------
     this.turbo = new TurboSystem();
 
@@ -162,11 +167,27 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     this.playerXpTextElement = document.querySelector("#player-xp-text");
     this.bossHudElement = document.querySelector("#boss-hud");
 
+    // --- Death screen (full destruction sequence UI) --------------------
+    this.deathScreenElement = document.querySelector("#death-screen");
+    this.deathScreenTimerElement = document.querySelector("#death-screen-timer");
+    this.deathScreenSeconds = null;
+
     this.showNotice = (text, duration = 2.5) => {
       if (!this.gameNoticeElement) return;
       this.gameNoticeElement.textContent = text;
       this.gameNoticeElement.hidden = false;
       this.noticeTimer = duration;
+    };
+
+    this.showDeathScreen = () => {
+      if (!this.deathScreenElement) return;
+      this.deathScreenElement.hidden = false;
+      this.deathScreenSeconds = null; // force the first countdown paint below
+    };
+
+    this.hideDeathScreen = () => {
+      if (!this.deathScreenElement) return;
+      this.deathScreenElement.hidden = true;
     };
 
     this.playerHealth.onDamage = (amount, source) => {
@@ -176,7 +197,13 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     };
 
     this.playerHealth.onDeath = () => {
-      this.showNotice("VEHICLE DISABLED — Respawning…", PLAYER_CONFIG.respawnDelay + 0.3);
+      // Stow the turret immediately (no more scanning/firing) and switch
+      // the vehicle to its charred/smoking wreck look -- see
+      // VehicleDestruction.js. Controls themselves are cut in the fixed
+      // physics substep loop below by checking playerHealth.dead directly.
+      this.turret.forceRetract();
+      this.vehicleDestruction.activate(this.vehiclePhysics.body);
+      this.showDeathScreen();
     };
 
     this.playerHealth.onRespawn = () => {
@@ -187,6 +214,8 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       this.turbo.reset();
       this.engineStartRequested = false;
       this.cameraRig.reset();
+      this.vehicleDestruction.deactivate();
+      this.hideDeathScreen();
       this.showNotice("Back in the fight!", 1.5);
     };
 
@@ -519,7 +548,7 @@ if (mobileButton) {
 
     const input = this.input.sample();
 
-    if (this.input.consumeTurretToggle()) {
+    if (this.input.consumeTurretToggle() && !this.playerHealth.dead) {
       this.turret.toggle();
     }
 
@@ -645,10 +674,17 @@ if (this.input.consumeReset()) {
     this.input.activeSource === "Mobile Touch";
   const signedSpeed = this.vehiclePhysics.signedSpeed;
 
+  // Vehicle is destroyed: controls are fully cut. No engine start, no
+  // driving-controller update (which would otherwise keep advancing
+  // drivetrain/RPM state off dead input), no turbo -- just a neutral,
+  // braked control set so the wreck coasts to a stop under physics like
+  // any other unpowered object (see requirement #1).
+  const alive = !this.playerHealth.dead;
+
   if (this.engineStartRequested) {
     this.engineStartRequested = false;
 
-    if (this.drivingMode === "manual") {
+    if (alive && this.drivingMode === "manual") {
       this.manualController.startEngine(
         input,
         this.input.shifter,
@@ -657,19 +693,21 @@ if (this.input.consumeReset()) {
     }
   }
 
-  const controls = this.drivingMode === "manual"
-    ? this.manualController.update(
-        input,
-        signedSpeed,
-        this.input.shifter,
-        wheelActive,
-        FIXED_DT
-      )
-    : this.controller.update(
-        input,
-        signedSpeed,
-        FIXED_DT
-      );
+  const controls = !alive
+    ? { steeringAngle: 0, drive: 0, driveForcePerWheel: 0, brake: 1, handbrake: 0 }
+    : this.drivingMode === "manual"
+      ? this.manualController.update(
+          input,
+          signedSpeed,
+          this.input.shifter,
+          wheelActive,
+          FIXED_DT
+        )
+      : this.controller.update(
+          input,
+          signedSpeed,
+          FIXED_DT
+        );
 
   // Turbo / boost. SHIFT (desktop) and the mobile turbo button both feed
   // isTurboRequested() (see InputManager) -- this is the single place the
@@ -678,7 +716,7 @@ if (this.input.consumeReset()) {
   // handbrake, and reverse are untouched so turbo can't destabilize the
   // physics or fight the player's brakes.
   const turboState = this.turbo.update(
-    this.input.isTurboRequested(), FIXED_DT
+    alive && this.input.isTurboRequested(), FIXED_DT
   );
 
   if (turboState.justActivated) {
@@ -705,6 +743,20 @@ if (this.input.consumeReset()) {
     this.targetSystem.update(dt, this.vehiclePhysics.body.position, this.camera, this.audio);
     this.turret.update(dt, this.targetSystem);
     this.playerHealth.update(dt);
+
+    if (this.playerHealth.dead && this.deathScreenTimerElement) {
+      const seconds = Math.max(0, Math.ceil(this.playerHealth.respawnTimer));
+      if (seconds !== this.deathScreenSeconds) {
+        this.deathScreenSeconds = seconds;
+        this.deathScreenTimerElement.textContent = String(seconds);
+
+        // Restart the CSS tick animation on every new second (see
+        // style.css's #death-screen-timer) by forcing a reflow.
+        this.deathScreenTimerElement.style.animation = "none";
+        void this.deathScreenTimerElement.offsetWidth;
+        this.deathScreenTimerElement.style.animation = "";
+      }
+    }
 
     this.playerHealthBar.setRatio(this.playerHealth.ratio);
     this.playerHealthBar.updateTransform(this.vehicle.root.position, this.camera);
@@ -855,6 +907,8 @@ this.exhaust.update(dt, this.camera, {
   running: engineRunning,
   boosting: this.turbo.active
 });
+
+this.vehicleDestruction.update(dt, this.camera);
 
 this.audio.update({
   rpm: presentationRPM,

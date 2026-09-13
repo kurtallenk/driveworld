@@ -4,6 +4,7 @@ import { ChatBubble } from "./ChatBubble.js";
 import { RemoteTurret } from "../turret/RemoteTurret.js";
 import { ExhaustSystem } from "../vehicle/ExhaustSystem.js";
 import { HealthBar } from "../gameplay/HealthBar.js";
+import { VehicleDestruction } from "../vehicle/VehicleDestruction.js";
 import {
   COLLISION_GROUPS,
   REMOTE_VEHICLE_CANNON_MATERIAL
@@ -439,6 +440,13 @@ export class RemoteVehicle {
       width: 1.6, height: 0.16, yOffset: 2.65
     });
 
+    // Destroyed/wreck visuals for other players -- purely presentational
+    // (no physics body drives a remote vehicle, so no tilt impulse is
+    // passed to activate()). Toggled from pushState() below whenever the
+    // networked `dead` flag changes.
+    this.destruction = new VehicleDestruction(scene, this.root);
+    this.wasDead = false;
+
     this.positionA = new THREE.Vector3();
     this.positionB = new THREE.Vector3();
     this.rotationA = new THREE.Quaternion();
@@ -497,6 +505,17 @@ export class RemoteVehicle {
     ) {
       this.healthBar.setRatio(state.health / state.maxHealth);
     }
+
+    // Destroyed/wreck visuals -- mirrors the local player's
+    // playerHealth.onDeath/onRespawn (see Game.js), driven here by the
+    // networked `dead` flag instead of a local PlayerHealth instance.
+    const isDead = state.dead === true;
+    if (isDead && !this.wasDead) {
+      this.destruction.activate();
+    } else if (!isDead && this.wasDead) {
+      this.destruction.deactivate();
+    }
+    this.wasDead = isDead;
   }
 
   // Called by MultiplayerClient when a `chat` message arrives for this
@@ -541,6 +560,7 @@ export class RemoteVehicle {
       // No network samples yet (e.g. the very first frame): still animate
       // the turret in place so it isn't stuck on a stale pose.
       this.turret.update(dt);
+      this.destruction.update(dt, camera);
       return;
     }
 
@@ -619,6 +639,8 @@ export class RemoteVehicle {
       boosting: state.turbo === true
     });
 
+    this.destruction.update(dt, camera);
+
     if (camera) {
       this.healthBar.updateTransform(this.root.position, camera);
     }
@@ -628,6 +650,7 @@ export class RemoteVehicle {
     this.chatBubble.dispose();
     this.turret.dispose();
     this.exhaust.dispose();
+    this.destruction.dispose();
     this.healthBar.dispose();
     this.scene.remove(this.root);
 

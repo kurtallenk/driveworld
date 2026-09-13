@@ -860,6 +860,109 @@ button:disabled {
 #damage-flash[hidden] { display: none; }
 
 /* ==========================================================================
+   Death screen — full destruction sequence UI shown while the player is
+   in PlayerHealth's dead state (see Game.js's playerHealth.onDeath /
+   onRespawn). Sits above #game-notice / #damage-flash since it's the
+   dominant state of the screen while active.
+   ========================================================================== */
+
+#death-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, #1a0505d9 0%, #05070ae6 70%);
+  backdrop-filter: blur(6px);
+  animation: deathScreenFadeIn 0.4s ease-out;
+  pointer-events: none;
+}
+
+#death-screen[hidden] { display: none; }
+
+#death-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg, #ff2d2d14 0px, transparent 2px, transparent 4px
+  );
+  animation: deathScreenScan 6s linear infinite;
+  mix-blend-mode: screen;
+}
+
+.death-screen-inner {
+  position: relative;
+  text-align: center;
+  padding: 2rem 3rem;
+  border: 1px solid #ff4d4d55;
+  border-radius: 1rem;
+  background: #0c0607cc;
+  box-shadow: 0 0 60px #ff2d2d33, inset 0 0 40px #00000066;
+  animation: deathScreenPulse 1.6s ease-in-out infinite;
+}
+
+.death-screen-icon {
+  font-size: 2.6rem;
+  line-height: 1;
+  color: #ff5b52;
+  text-shadow: 0 0 16px #ff2d2d99;
+  margin-bottom: 0.4rem;
+}
+
+.death-screen-title {
+  margin: 0 0 0.3rem;
+  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  letter-spacing: 0.16em;
+  color: #ff8a83;
+  text-shadow: 0 0 12px #ff2d2d66;
+}
+
+.death-screen-subtitle {
+  margin: 0 0 1.1rem;
+  color: #ffb3ae;
+  letter-spacing: 0.05em;
+  font-size: 0.95rem;
+  opacity: 0.85;
+}
+
+.death-screen-countdown {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #ffe28a;
+  font-size: 1.05rem;
+}
+
+#death-screen-timer {
+  display: inline-block;
+  min-width: 1.4ch;
+  font-size: 1.4rem;
+  color: #fff;
+  animation: deathScreenTick 1s ease-out;
+}
+
+@keyframes deathScreenFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes deathScreenPulse {
+  0%, 100% { box-shadow: 0 0 60px #ff2d2d33, inset 0 0 40px #00000066; }
+  50% { box-shadow: 0 0 90px #ff2d2d55, inset 0 0 50px #00000088; }
+}
+
+@keyframes deathScreenScan {
+  from { transform: translateY(0); }
+  to { transform: translateY(40px); }
+}
+
+@keyframes deathScreenTick {
+  from { transform: scale(1.5); opacity: 0.3; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* ==========================================================================
    Online Players panel — minimized by default. A small always-visible pill
    (icon + live count) expands into the full status/leaderboard card. Lives
    in the top-left column, below #open-menu, and never grows large enough
@@ -2277,6 +2380,13 @@ body.mobile-controls-active .dash-engine-pill {
     font-size: 0.85rem;
     padding: 0.55rem 1rem;
   }
+
+  .death-screen-inner {
+    padding: 1.5rem 1.6rem;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .death-screen-icon { font-size: 2.1rem; }
 
   #debug {
     max-width: calc(100vw - 1.6rem);
