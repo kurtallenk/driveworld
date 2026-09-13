@@ -380,13 +380,31 @@ if (mobileButton) {
 }
 
     this.speedElement = document.querySelector("#speed");
+    this.speedUnitElement = document.querySelector("#speed-unit");
     this.gearElement = document.querySelector("#gear");
     this.gearModeElement = document.querySelector("#gear-mode");
     this.rpmValueElement = document.querySelector("#dash-rpm-value");
     this.rpmFillElement = document.querySelector("#dash-rpm-fill");
     this.clutchRowElement = document.querySelector("#dash-clutch-row");
     this.clutchFillElement = document.querySelector("#dash-clutch-fill");
+    this.boostFillElement = document.querySelector("#dash-boost-fill");
+    this.dashElement = document.querySelector("#dash");
+    this.warnHandbrakeElement = document.querySelector("#warn-handbrake");
+    this.warnTractionElement = document.querySelector("#warn-traction");
+    this.warnDamageElement = document.querySelector("#warn-damage");
+    this.keyboardPanelElement = document.querySelector("#keyboard-panel");
     this.debugElement = document.querySelector("#input-debug");
+
+    // Display unit toggle for the speedometer. The underlying game value
+    // stays km/h everywhere (physics, audio, network) — this only affects
+    // the dashboard readout.
+    this.speedUnit = "mph";
+    if (this.speedUnitElement) {
+      this.speedUnitElement.addEventListener("click", () => {
+        this.speedUnit = this.speedUnit === "mph" ? "kmh" : "mph";
+        this.speedUnitElement.textContent = this.speedUnit === "mph" ? "mph" : "km/h";
+      });
+    }
 
     // The RPM arc is drawn as a stroke-dashoffset sweep around a full
     // circle. Computed from the SVG circle's own radius (r=52, matching
@@ -448,6 +466,8 @@ if (mobileButton) {
   this.manualController.reset();
   this.turbo.reset();
   this.engineStartRequested = false;
+
+  if (this.dashElement) this.dashElement.dataset.mode = mode;
 
   this.drivingStatusElement.textContent = mode === "manual"
     ? "Manual selected. Activate wheel, select neutral, then start engine."
@@ -712,6 +732,12 @@ if (this.input.consumeReset()) {
       this.playerHpFillElement.style.width =
         `${Math.max(0, this.playerHealth.ratio * 100)}%`;
     }
+
+    if (this.warnDamageElement) {
+      this.warnDamageElement.classList.toggle(
+        "dash-warn--on", this.playerHealth.ratio < 0.3
+      );
+    }
     if (this.playerHpTextElement) {
       this.playerHpTextElement.textContent =
         `${Math.round(this.playerHealth.health)} / ${Math.round(this.playerHealth.maxHealth)}`;
@@ -795,6 +821,16 @@ for (const wheel of this.vehiclePhysics.vehicle.wheelInfos) {
   );
 }
 
+if (this.warnTractionElement) {
+  this.warnTractionElement.classList.toggle("dash-warn--on", slip > 0.55);
+}
+
+if (this.warnHandbrakeElement) {
+  this.warnHandbrakeElement.classList.toggle(
+    "dash-warn--on", input.handbrake > 0
+  );
+}
+
 this.vehicle.updatePresentation({
   steering: input.steering,
   speedKmh: speed * 3.6,
@@ -838,7 +874,27 @@ this.renderer.render(this.scene, this.camera);
 
     if (timeMs - this.lastHudTime >= 100) {
       const speedKmh = this.vehiclePhysics.body.velocity.length() * 3.6;
-      this.speedElement.textContent = `${Math.round(speedKmh)}`;
+      const displaySpeed = this.speedUnit === "mph"
+        ? speedKmh * 0.621371
+        : speedKmh;
+      this.speedElement.textContent = `${Math.round(displaySpeed)}`;
+
+      if (this.keyboardPanelElement) {
+        this.keyboardPanelElement.hidden = this.input.mode !== "keyboard";
+        this.keyboardPanelElement.classList.toggle(
+          "kbd-panel--minimal", speedKmh > 12
+        );
+      }
+
+      if (this.input.mode === "keyboard" && this.keyboardPanelElement) {
+        for (const keyEl of this.keyboardPanelElement.querySelectorAll("[data-key]")) {
+          const code = keyEl.dataset.key;
+          const altCode = keyEl.dataset.keyAlt;
+          const active = this.input.keys.has(code) ||
+            (altCode && this.input.keys.has(altCode));
+          keyEl.classList.toggle("kbd-key--active", Boolean(active));
+        }
+      }
 
       // Tachometer arc + digital RPM readout share the same
       // presentationRPM already computed above for audio/vehicle
@@ -926,6 +982,27 @@ if (this.turboStatusElement) {
   );
   this.turboStatusElement.classList.toggle(
     "dash-pill-turbo--cooldown", this.turbo.state === "cooldown"
+  );
+}
+
+if (this.boostFillElement) {
+  // Ready: full bar. Active: drains toward 0 as the boost is used up.
+  // Cooldown: refills back toward full. All derived from the single
+  // existing TurboSystem state — no separate boost meter is invented.
+  const boostFraction = this.turbo.state === "active"
+    ? this.turbo.durationRemaining / this.turbo.config.duration
+    : this.turbo.state === "cooldown"
+      ? 1 - this.turbo.cooldownFraction
+      : 1;
+
+  this.boostFillElement.style.width =
+    `${Math.max(0, Math.min(100, boostFraction * 100))}%`;
+
+  this.boostFillElement.classList.toggle(
+    "dash-boost-fill--active", this.turbo.state === "active"
+  );
+  this.boostFillElement.classList.toggle(
+    "dash-boost-fill--cooldown", this.turbo.state === "cooldown"
   );
 }
 

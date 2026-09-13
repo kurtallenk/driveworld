@@ -58,9 +58,16 @@ export class MobileControls {
     this.pedalsEl = document.createElement("div");
     this.pedalsEl.className = "mc-pedals";
 
-    this.clutchEl = this.makePedal("CLUTCH", "mc-pedal-clutch", "◆");
-    this.brakeEl = this.makePedal("BRAKE", "mc-pedal-brake", "■");
-    this.accelEl = this.makePedal("GAS", "mc-pedal-accel", "▲");
+    const ICON_ACCEL =
+      '<svg viewBox="0 0 24 24"><path d="M12 3 3 19h18L12 3z"/></svg>';
+    const ICON_BRAKE =
+      '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';
+    const ICON_CLUTCH =
+      '<svg viewBox="0 0 24 24"><path d="M12 2 2 12l10 10 10-10L12 2z"/></svg>';
+
+    this.clutchEl = this.makePedal("CLUTCH", "mc-pedal-clutch", ICON_CLUTCH);
+    this.brakeEl = this.makePedal("BRAKE", "mc-pedal-brake", ICON_BRAKE);
+    this.accelEl = this.makePedal("GAS", "mc-pedal-accel", ICON_ACCEL);
 
     this.pedalsEl.append(this.clutchEl, this.brakeEl, this.accelEl);
 
@@ -73,7 +80,9 @@ export class MobileControls {
     this.turretEl.className = "mc-turret-btn";
     this.turretEl.setAttribute("aria-label", "Deploy turret");
     this.turretEl.innerHTML =
-      '<span class="mc-turret-icon" aria-hidden="true">&#8982;</span>' +
+      '<span class="mc-turret-icon" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5.2 3.4 9 8 10 4.6-1 8-4.8 8-10V6l-8-4z"/></svg>' +
+      '</span>' +
       '<span class="mc-turret-text">TURRET</span>';
 
     // Turbo/boost button. Unlike the turret button (a tap-triggered
@@ -85,7 +94,9 @@ export class MobileControls {
     this.turboEl.className = "mc-turbo-btn";
     this.turboEl.setAttribute("aria-label", "Turbo boost");
     this.turboEl.innerHTML =
-      '<span class="mc-turbo-icon" aria-hidden="true">&#9889;</span>' +
+      '<span class="mc-turbo-icon" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 11-14h-8z"/></svg>' +
+      '</span>' +
       '<span class="mc-turbo-text">TURBO</span>';
 
     // Groups the turbo/turret buttons with the pedal stack under one fixed
@@ -140,10 +151,9 @@ export class MobileControls {
   makePedal(label, className, icon = "") {
     const el = document.createElement("div");
     el.className = `mc-pedal ${className}`;
-    el.innerHTML = icon
-      ? `<span class="mc-pedal-icon" aria-hidden="true">${icon}</span>` +
-        `<span class="mc-pedal-label">${label}</span>`
-      : `<span class="mc-pedal-label">${label}</span>`;
+    el.innerHTML =
+      `<span class="mc-pedal-cap"><span class="mc-pedal-icon" aria-hidden="true">${icon}</span></span>` +
+      `<span class="mc-pedal-label">${label}</span>`;
     return el;
   }
 
