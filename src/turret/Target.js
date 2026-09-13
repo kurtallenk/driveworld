@@ -233,7 +233,12 @@ export class Target {
     this.group.position.y = this.baseY + Math.sin(elapsed * 1.4 + this.bobPhase) * 0.15;
     this.ring.rotation.z += dt * 1.6;
 
-    const distanceToPlayer = ctx?.playerPosition
+    // A dead player is invisible to enemy AI (requirement #2): treat them
+    // as infinitely far away so any in-progress attack/alert immediately
+    // resets via the existing distance-based state transitions below,
+    // instead of adding a second, separate "is the player dead" branch
+    // that could fall out of sync with the normal aggro-range logic.
+    const distanceToPlayer = ctx?.playerPosition && !ctx.playerDead
       ? ctx.playerPosition.distanceTo(this.position)
       : Infinity;
 
@@ -279,6 +284,139 @@ export class Target {
 
     this.healthBar.setRatio(this.health / this.maxHealth);
     if (ctx?.camera) this.healthBar.updateTransform(this.position, ctx.camera);
+  }
+
+  // -------------------------------------------------------------------------
+  // COSMETIC-ONLY UPDATE (multiplayer "networked" mode)
+  // -------------------------------------------------------------------------
+  // Runs every frame regardless of network tick rate so the enemy doesn't
+  // look frozen between server broadcasts: bob, ring spin, damage-flash
+  // decay, health bar billboarding, and smoothly interpolating toward the
+  // last position/facing the server reported. No AI, no attack decisions,
+  // no HP mutation -- those are 100% server-authoritative (requirement #10).
+  // -------------------------------------------------------------------------
+  updateCosmetic(dt, elapsed, camera) {
+    if (this.disposed) return;
+
+    this.bobPhase = this.bobPhase ?? 0;
+    this.ring.rotation.z += dt * 1.6;
+
+    if (this.netTargetPos) {
+      // Smooth toward the latest server position rather than snapping --
+      // the server only broadcasts enemy state a few times a second.
+      const followRate = 1 - Math.exp(-dt * 8);
+      this.group.position.lerp(this.netTargetPos, followRate);
+      this.baseY = this.netTargetPos.y;
+    }
+
+    this.group.position.y = this.baseY + Math.sin(elapsed * 1.4 + this.bobPhase) * 0.15;
+
+    if (this.netFacingYaw !== null && this.netFacingYaw !== undefined) {
+      this.group.rotation.y = stepAngle(this.group.rotation.y, this.netFacingYaw, dt * 3.0);
+    } else {
+      this.group.rotation.y += dt * 0.5;
+    }
+
+    if (this.telegraphRing) {
+      if (this.netTelegraph) {
+        this.telegraphRing.visible = true;
+        const urgency = this.netTelegraphProgress ?? 0;
+        this.telegraphRing.scale.setScalar(1 + urgency * 0.7);
+        this.telegraphRing.material.opacity =
+          0.35 + 0.45 * Math.abs(Math.sin(urgency * 16));
+      } else {
+        this.telegraphRing.visible = false;
+      }
+    }
+
+    if (this.flashTimer > 0) {
+      this.flashTimer = Math.max(0, this.flashTimer - dt);
+      this.material.emissiveIntensity = this.kind === "boss" ? 2.0 : 1.6;
+    } else {
+      this.material.emissiveIntensity = this.kind === "boss" ? 0.8 : 0.6;
+    }
+
+    this.healthBar.setRatio(this.maxHealth > 0 ? this.health / this.maxHealth : 0);
+    if (camera) this.healthBar.updateTransform(this.position, camera);
+  }
+
+  // -------------------------------------------------------------------------
+  // APPLY NETWORK STATE
+  // -------------------------------------------------------------------------
+  // `data` comes straight from the server's "enemies" broadcast (see
+  // TargetSystem.applyServerState / MultiplayerClient.handleMessage). This
+  // is the ONLY place HP/alive/position are allowed to change while
+  // networked -- never from local applyDamage().
+  // -------------------------------------------------------------------------
+  applyNetworkState(data, camera, effectsPool, audio) {
+    this.health = data.hp;
+    this.maxHealth = data.maxHp;
+
+    const wasAlive = this.alive;
+    this.alive = data.alive;
+
+    this.netTargetPos = this.netTargetPos ?? new THREE.Vector3();
+    this.netTargetPos.set(data.x, data.y, data.z);
+
+    if (!this.netInitialized) {
+      // First update for a freshly created Target -- snap instead of
+      // easing in from the default (0,0,0) origin.
+      this.group.position.copy(this.netTargetPos);
+      this.baseY = data.y;
+      this.netInitialized = true;
+    }
+
+    this.netFacingYaw =
+      Number.isFinite(data.tx) && Number.isFinite(data.tz)
+        ? Math.atan2(data.tx - data.x, data.tz - data.z)
+        : null;
+
+    this.netTelegraph = data.telegraph === true;
+    this.netTelegraphProgress = data.telegraphProgress ?? 0;
+
+    const ratio = Math.max(0, this.maxHealth > 0 ? this.health / this.maxHealth : 0);
+    this.material.color.setHSL(ratio * 0.33, 0.85, 0.5);
+    this.material.emissive.copy(this.material.color);
+
+    // Rising edge on the server's per-shot counter -- fire the same
+    // tracer/impact/sound feedback the local AI used to trigger itself,
+    // now driven by the authoritative shot instead (requirement #4/#6:
+    // every player sees the same attack at the same time).
+    if (
+      Number.isFinite(data.fireSeq) &&
+      this.lastFireSeq !== undefined &&
+      data.fireSeq !== this.lastFireSeq &&
+      Number.isFinite(data.tx)
+    ) {
+      const muzzle = this.position.clone();
+      muzzle.y += 0.3;
+      const impact = new THREE.Vector3(data.tx, data.ty, data.tz);
+
+      effectsPool?.spawnTracer(muzzle, impact);
+      effectsPool?.spawnImpact(impact);
+      this.flashTimer = Math.max(this.flashTimer, 0.15);
+
+      audio?.playToneEffect?.({
+        startFrequency: this.kind === "boss" ? 260 : 420,
+        endFrequency: this.kind === "boss" ? 90 : 160,
+        duration: 0.08,
+        volume: 0.04,
+        type: "sawtooth",
+        destination: audio.effectsBus
+      });
+    }
+
+    this.lastFireSeq = data.fireSeq ?? this.lastFireSeq ?? 0;
+
+    // Death transition: one-shot impact burst, matching the local-sim
+    // destruction feel, then TargetSystem disposes the visual shortly
+    // after once the server stops reporting this id at all.
+    if (wasAlive && !this.alive) {
+      this.aiState = AI_STATE.DEAD;
+      effectsPool?.spawnImpact(this.position.clone());
+    }
+
+    if (camera) this.healthBar.updateTransform(this.position, camera);
   }
 
   // Returns true the instant this hit destroys the target (i.e. it was

@@ -13,7 +13,7 @@ import { TurretEffectsPool } from "./TurretEffects.js";
 // Keep enemies well inside the boundary walls.
 // World.js walls sit around +-199.
 // ---------------------------------------------------------------------------
-const WORLD_LIMIT = 185;
+const WORLD_LIMIT = ENEMY_CONFIG.spawn?.worldLimit ?? 185;
 
 // ---------------------------------------------------------------------------
 // SPAWN SEARCH SETTINGS
@@ -21,28 +21,25 @@ const WORLD_LIMIT = 185;
 
 const SPAWN_ATTEMPTS = 100;
 
-// Extra minimum distance from the fixed player spawn point.
-// This is intentionally separate from the protected safe-zone radius.
-//
-// Example:
-// protectedSpawnRadius = 30
-// minDistanceFromPlayerSpawn = 75
-//
-// This means enemies cannot simply spawn at distance 31.
-// They must be at least 75 units away from the original player spawn.
-// ---------------------------------------------------------------------------
-const DEFAULT_MIN_DISTANCE_FROM_PLAYER_SPAWN = 200;
-const DEFAULT_BOSS_MIN_DISTANCE_FROM_PLAYER_SPAWN = 300;
-
 // ---------------------------------------------------------------------------
 // TargetSystem
 // ---------------------------------------------------------------------------
-// Owns every enemy (normal + boss) in the world.
+// Owns every enemy (normal + boss) rendered by THIS client.
 //
-// Enemies are local-only gameplay entities. They are not synchronized as
-// multiplayer entities.
+// IMPORTANT -- two modes:
 //
-// Enemy attacks always target the local player's vehicle.
+// 1. Multiplayer connected: this class becomes a pure PRESENTATION layer.
+//    Enemy identity, position, HP, alive/dead state, targeting and attack
+//    timing are all decided by the authoritative server (see
+//    server/EnemyWorld.js) and streamed down as "enemies" messages. This
+//    class just creates/updates/removes the local Target visuals to match
+//    (see applyServerState()) so that every connected player renders the
+//    exact same enemy world -- same IDs, same positions, same HP, same
+//    deaths (requirement #5/#6).
+//
+// 2. Offline/local play (no multiplayer connection): this class falls back
+//    to running the original local spawn/AI/attack simulation itself, so
+//    the game remains fully playable without a server.
 // ---------------------------------------------------------------------------
 export class TargetSystem {
   constructor(scene, terrain, roads, playerHealth) {
@@ -67,6 +64,10 @@ export class TargetSystem {
     // Callbacks used by Game.js.
     this.onEnemyDestroyed = null;
     this.onBossSpawned = null;
+
+    // Callback used by MultiplayerClient to send a turret hit to the
+    // server when in networked mode (see applyDamage() below).
+    this.onNetworkHit = null;
 
     // Deterministic random generator.
     this.seed = 908070;
@@ -109,12 +110,124 @@ export class TargetSystem {
     // Therefore enemies will never appear immediately outside the safe zone.
     // -----------------------------------------------------------------------
     this.minDistanceFromPlayerSpawn =
-      ENEMY_CONFIG.spawn?.minDistanceFromPlayerSpawn ??
-      DEFAULT_MIN_DISTANCE_FROM_PLAYER_SPAWN;
+      ENEMY_CONFIG.spawn?.minDistanceFromPlayerSpawn ?? 200;
 
     this.bossMinDistanceFromPlayerSpawn =
-      ENEMY_CONFIG.spawn?.bossMinDistanceFromPlayerSpawn ??
-      DEFAULT_BOSS_MIN_DISTANCE_FROM_PLAYER_SPAWN;
+      ENEMY_CONFIG.spawn?.bossMinDistanceFromPlayerSpawn ?? 300;
+
+    this.minDistanceBetweenEnemies =
+      ENEMY_CONFIG.spawn?.minDistanceBetweenEnemies ?? 14;
+
+    // ------------------------------------------------------------------
+    // MULTIPLAYER PRESENTATION MODE
+    // ------------------------------------------------------------------
+    // When a MultiplayerClient is attached (see Game.js), this system
+    // stops running its own local spawn timers/RNG/AI and instead mirrors
+    // whatever the authoritative server reports. `byId` lets incoming
+    // server updates find/update/remove the matching local Target visual
+    // in O(1) instead of a linear scan (requirement #9 -- never create a
+    // duplicate when the server reports an enemy we already have).
+    // ------------------------------------------------------------------
+    this.networked = false;
+    this.byId = new Map();
+  }
+
+  // Called once by Game.js right after a MultiplayerClient successfully
+  // connects. From this point on, update() no longer spawns/simulates
+  // anything locally -- see applyServerState().
+  enableNetworkedMode() {
+    this.networked = true;
+    this.clearTargets();
+  }
+
+  // Called by Game.js if multiplayer disconnects, so offline play still
+  // works (falls back to local simulation rather than leaving the world
+  // permanently empty).
+  disableNetworkedMode() {
+    this.networked = false;
+    this.clearTargets();
+
+    // Local sim starts from a clean slate rather than resuming whatever
+    // timers happened to be mid-flight before connecting.
+    this.respawnTimers.length = 0;
+    this.bossActive = false;
+    this.bossRespawnTimer = ENEMY_CONFIG.boss.initialSpawnDelay;
+  }
+
+  // Disposes every current Target visual without tearing down the shared
+  // effects pool/assets -- used when switching between networked and local
+  // modes. Full teardown (including the pool) is dispose() below, used only
+  // when the whole game/scene is going away.
+  clearTargets() {
+    for (const target of this.targets) {
+      target.dispose();
+    }
+
+    this.targets.length = 0;
+    this.byId.clear();
+  }
+
+  // -------------------------------------------------------------------------
+  // APPLY SERVER STATE
+  // -------------------------------------------------------------------------
+  // `enemies`: array of { id, kind, x, y, z, hp, maxHp, alive, telegraph,
+  //            telegraphProgress, fireSeq } from the server's "enemies"
+  //            broadcast (see MultiplayerClient.handleMessage).
+  //
+  // Reconciles the local visual set against it: updates existing Targets by
+  // id, creates new ones for ids we haven't seen, and disposes/removes any
+  // local Target whose id the server no longer reports (dead & fully
+  // despawned, or otherwise gone) -- this is what keeps every client's
+  // enemy list free of duplicates and free of "ghost" enemies (requirement
+  // #9).
+  // -------------------------------------------------------------------------
+  applyServerState(enemies, camera, audio) {
+    const seen = new Set();
+
+    for (const data of enemies) {
+      seen.add(data.id);
+
+      let target = this.byId.get(data.id);
+
+      if (!target) {
+        const assets = data.kind === "boss" ? this.bossAssets : this.assets;
+
+        target = new Target(
+          this.scene,
+          assets,
+          new THREE.Vector3(data.x, data.y, data.z),
+          data.kind
+        );
+
+        target.id = data.id;
+        target.maxHealth = data.maxHp;
+        target.lastFireSeq = data.fireSeq ?? 0;
+
+        this.byId.set(data.id, target);
+        this.targets.push(target);
+
+        if (data.kind === "boss") this.onBossSpawned?.(target);
+      }
+
+      target.applyNetworkState(data, camera, this.effectsPool, audio);
+    }
+
+    // Anything previously known but no longer present server-side has
+    // despawned/died -- remove the local visual so it doesn't linger.
+    for (const [id, target] of this.byId) {
+      if (seen.has(id)) continue;
+
+      target.dispose();
+      this.byId.delete(id);
+    }
+
+    if (this.targets.some(t => t.disposed)) {
+      this.targets = this.targets.filter(t => !t.disposed);
+    }
+
+    // Drives Game.js's boss HUD element, same flag the local/offline
+    // simulation sets for itself.
+    this.bossActive = enemies.some(e => e.kind === "boss" && e.alive);
   }
 
   // -------------------------------------------------------------------------
@@ -290,6 +403,23 @@ export class TargetSystem {
       }
 
       // ---------------------------------------------------------------
+      // MINIMUM DISTANCE FROM OTHER ENEMIES
+      // ---------------------------------------------------------------
+      // Prevents one giant cluster of enemies in a single spot (see
+      // requirement #3) -- every existing, still-alive enemy must be at
+      // least minDistanceBetweenEnemies away from this candidate.
+      // ---------------------------------------------------------------
+      const tooCloseToAnotherEnemy = this.targets.some(other =>
+        other.alive &&
+        Math.hypot(x - other.position.x, z - other.position.z) <
+          this.minDistanceBetweenEnemies
+      );
+
+      if (tooCloseToAnotherEnemy) {
+        continue;
+      }
+
+      // ---------------------------------------------------------------
       // TERRAIN HEIGHT
       // ---------------------------------------------------------------
       const y =
@@ -361,13 +491,36 @@ export class TargetSystem {
   // UPDATE
   // -------------------------------------------------------------------------
   update(dt, playerPosition, camera, audio) {
+    // Multiplayer connected: enemies are driven entirely by
+    // applyServerState() (called from MultiplayerClient when an "enemies"
+    // message arrives). Still tick cosmetic per-frame animation (bob,
+    // ring spin, damage flash, health bar billboarding) so remote-driven
+    // enemies don't look frozen between network updates, but never spawn,
+    // respawn, or run AI/attack logic locally -- that would risk exactly
+    // the per-client divergence requirement #5/#6 rule out.
+    if (this.networked) {
+      for (const target of this.targets) {
+        target.updateCosmetic(dt, this.elapsed, camera);
+      }
+
+      this.effectsPool.update(dt);
+      this.elapsed += dt;
+      return;
+    }
+
     this.elapsed += dt;
 
     const ctx = {
       playerPosition,
+      playerDead: this.playerHealth?.dead === true,
 
+      // playerHealth.applyDamage() already no-ops while dead (see
+      // PlayerHealth.js), but guarding here too means a dead player
+      // strictly never reaches that call in the first place, matching
+      // requirement #2's "dead players must not receive damage" at the
+      // source rather than relying on a single downstream check.
       applyPlayerDamage: (amount, source) =>
-        this.playerHealth?.applyDamage(amount, source),
+        !this.playerHealth?.dead && this.playerHealth?.applyDamage(amount, source),
 
       effectsPool: this.effectsPool,
 
@@ -472,6 +625,24 @@ export class TargetSystem {
   // Applies damage and handles target destruction.
   // -------------------------------------------------------------------------
   applyDamage(target, amount) {
+    // Multiplayer connected: HP/death are authoritative server-side (see
+    // requirement #10). Report the hit to the server instead of mutating
+    // HP locally, and let the next "enemies" broadcast (applyServerState)
+    // be the thing that actually changes target.health/alive -- this is
+    // what keeps every player seeing the exact same HP after damage
+    // (requirement #5), rather than each client racing ahead with its own
+    // locally-computed value.
+    if (this.networked) {
+      this.onNetworkHit?.(target.id, amount);
+
+      // A small, purely cosmetic local flash so the shooter gets instant
+      // feedback even before the server's confirmation round-trips back --
+      // never treated as authoritative (see Target.js's flashTimer usage).
+      target.flashTimer = 0.12;
+
+      return false;
+    }
+
     const destroyed =
       target.applyDamage(amount);
 

@@ -55,7 +55,14 @@ export const ENEMY_CONFIG = {
     detectionRange: 45,
     attackRange: 40,
     attackDamage: 10,
-    fireRate: 1.2 // seconds between shots
+
+    // Seconds between shots. Deliberately slow/"modern RPG" paced rather
+    // than a fast machine-gun tick -- this is the single, authoritative
+    // cooldown value: both the local visual sim (Target.js, used offline)
+    // and the authoritative multiplayer server (server/EnemyWorld.js) read
+    // this exact number, so there is nowhere else a competing cooldown
+    // could be hardcoded.
+    fireRate: 2.6
   },
 
   boss: {
@@ -64,10 +71,10 @@ export const ENEMY_CONFIG = {
     detectionRange: 100,
     attackRange: 80,
     burstDamagePerHit: 12,
-    burstCount: 4,
-    burstInterval: 0.18, // seconds between projectiles in a burst
-    attackCooldown: 5.5, // seconds between bursts
-    telegraphDuration: 1.1, // warning time before the burst fires
+    burstCount: 3,
+    burstInterval: 0.3, // seconds between projectiles within a burst
+    attackCooldown: 9, // seconds between bursts -- the actual gameplay pace
+    telegraphDuration: 1.4, // warning time before the burst fires
     respawnDelay: 60,
     initialSpawnDelay: 20, // grace period before the first boss appears
     scale: 3.2
@@ -83,7 +90,19 @@ export const ENEMY_CONFIG = {
     // never re-derived from the player's current position, so the zone
     // stays protected even after the player drives away and comes back.
     protectedSpawnCenter: { x: -3, z: -65 },
-    protectedSpawnRadius: 35
+    protectedSpawnRadius: 35,
+
+    // Extra minimum distance from the fixed player spawn point, deliberately
+    // larger than protectedSpawnRadius above so enemies never appear
+    // immediately outside the safe zone edge (see requirement #3).
+    minDistanceFromPlayerSpawn: 200,
+    bossMinDistanceFromPlayerSpawn: 300,
+
+    // Keeps enemies from bunching into a single cluster (requirement #3).
+    minDistanceBetweenEnemies: 14,
+
+    // Kept a little inside World.js's boundary walls (+-199).
+    worldLimit: 185
   }
 };
 

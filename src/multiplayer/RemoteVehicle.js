@@ -389,17 +389,17 @@ export class RemoteVehicle {
 
     // ---- Nameplate ------------------------------------------------------------
     const canvas = document.createElement("canvas");
-    canvas.width = 512;
-    canvas.height = 96;
+    canvas.width = 300;
+    canvas.height = 80;
 
     const context = canvas.getContext("2d");
     context.fillStyle = "#09131ed9";
-    context.fillRect(0, 0, 512, 96);
+    context.fillRect(0, 0, 300, 80);
     context.fillStyle = "#ffffff";
     context.textAlign = "center";
 
     // Shrink the font for longer names so it never overflows the label.
-    let fontSize = 40;
+    let fontSize = 50;
     context.font = `bold ${fontSize}px sans-serif`;
 
     while (
@@ -410,7 +410,7 @@ export class RemoteVehicle {
       context.font = `bold ${fontSize}px sans-serif`;
     }
 
-    context.fillText(this.name, 256, 62);
+    context.fillText(this.name, 150, 50);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -422,8 +422,8 @@ export class RemoteVehicle {
       })
     );
 
-    this.label.position.set(0, 2, 0);
-    this.label.scale.set(2.8, 0.525, 1);
+    this.label.position.set(0.1, 2.4, 0);
+    this.label.scale.set(1.25, 0.3, 1);
     this.root.add(this.label);
 
     this.chatBubble = new ChatBubble(this.root, BUBBLE_ANCHOR_Y);

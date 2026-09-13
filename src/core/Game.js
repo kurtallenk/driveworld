@@ -241,10 +241,33 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       }
     };
 
+    // Multiplayer counterpart of onEnemyDestroyed above: enemy death itself
+    // is server-authoritative and broadcast to everyone via TargetSystem's
+    // "enemies" sync (which is presentation-only and does not award XP --
+    // see applyServerState), but the server privately tells exactly the
+    // player who landed the killing blow to award XP here, so credit for a
+    // kill goes to whoever actually earned it even when multiple players
+    // were damaging the same enemy (requirement #14's "shared damage" case).
+    this.handleEnemyKilled = message => {
+      this.levelSystem.addXP(message.xpReward);
+
+      if (message.kind === "boss") {
+        this.showNotice(`BOSS DEFEATED! +${message.xpReward} XP`, 3);
+      }
+    };
+
     this.targetSystem.onBossSpawned = target => {
       this.showNotice(`⚠ BOSS INCOMING: ${target.name} ⚠`, 3);
       const bossNameElement = document.querySelector("#boss-name");
       if (bossNameElement) bossNameElement.textContent = target.name;
+    };
+
+    // Multiplayer connected: route locally-detected turret hits to the
+    // server instead of applying damage ourselves (requirement #10) -- see
+    // TargetSystem.applyDamage(). Harmless no-op via the `?.` below while
+    // playing offline/not yet connected.
+    this.targetSystem.onNetworkHit = (enemyId, amount) => {
+      this.multiplayer?.sendTurretHit(enemyId, amount);
     };
 
     this.turret = new Turret(
@@ -552,7 +575,7 @@ if (mobileButton) {
       this.turret.toggle();
     }
 
-if (this.input.consumeReset()) {
+if (this.input.consumeReset() && !this.playerHealth.dead) {
   /*
    * Collect the current positions of every other player.
    *

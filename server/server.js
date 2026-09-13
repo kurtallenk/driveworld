@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 
 import { WebSocket, WebSocketServer } from "ws";
 
+import { EnemyWorld } from "./EnemyWorld.js";
+import { ENEMY_CONFIG, PLAYER_CONFIG, TURRET_CONFIG } from "../src/turret/TurretConfig.js";
+
 const PORT = Number(process.env.PORT || 3001);
 
 // Public hosting needs to listen on all network interfaces.
@@ -18,6 +21,26 @@ const MAX_NAME_LENGTH = 16;
 const MAX_CHAT_LENGTH = 200;
 const CHAT_WINDOW_MS = 4000;
 const CHAT_LIMIT_PER_WINDOW = 6;
+
+// ---------------------------------------------------------------------------
+// AUTHORITATIVE ENEMY WORLD (requirements #5/#6/#7/#8/#9/#10)
+// ---------------------------------------------------------------------------
+// One EnemyWorld instance, owned by the server, is the only place enemy
+// spawning/position/HP/death/targeting are decided. Every connected client
+// only ever renders what this broadcasts (see EnemyWorld.js's header
+// comment and TargetSystem.applyServerState on the client).
+// ---------------------------------------------------------------------------
+const ENEMY_TICK_RATE = 12; // Hz -- simulation + broadcast rate for enemies
+const ENEMY_TICK_MS = 1000 / ENEMY_TICK_RATE;
+const enemyWorld = new EnemyWorld();
+
+// A player's turret damage can be boosted by leveling (see PLAYER_CONFIG's
+// turretDamageBonusPerInterval in TurretConfig.js), so a single fixed
+// damage value can't be trusted as the exact cap -- but any single hit
+// wildly larger than the base damage is not a legitimate leveled-up shot,
+// it's a forged/cheated message. This bound is deliberately generous.
+const MAX_TURRET_HIT_DAMAGE = TURRET_CONFIG.damage * 10;
+const MAX_ENEMY_ID_LENGTH = 32;
 
 // Session-only delivery stats (Phase 2). There is no database in this
 // project, so the leaderboard tracks players connected during the
@@ -320,11 +343,77 @@ function initialState(spawn) {
     mode: "arcade",
     paused: false,
     turret: initialTurretState(),
-    health: 100,
-    maxHealth: 100,
+
+    // These three fields are cosmetic mirrors of player.combat (below) --
+    // kept on `state` too because that's what already flows out through
+    // the existing "snapshot"/"welcome"/"join" broadcasts and what
+    // RemoteVehicle.js already reads client-side. See syncCombatIntoState().
+    health: PLAYER_CONFIG.maxHealth,
+    maxHealth: PLAYER_CONFIG.maxHealth,
     dead: false,
     turbo: false
   };
+}
+
+// ---------------------------------------------------------------------------
+// AUTHORITATIVE PLAYER COMBAT STATE (requirement #11)
+// ---------------------------------------------------------------------------
+// Unlike driving/turret state (still client-reported + bounded, see
+// validateState below), HP/dead is fully server-owned once enemies became
+// networked: enemy damage has to be decided in exactly one place for every
+// player to agree on it, the same way enemy HP does.
+// ---------------------------------------------------------------------------
+function initialCombat() {
+  return {
+    health: PLAYER_CONFIG.maxHealth,
+    maxHealth: PLAYER_CONFIG.maxHealth,
+    dead: false,
+    respawnAt: 0
+  };
+}
+
+// Mirrors the authoritative combat fields onto player.state so they ride
+// along with the existing snapshot/welcome/join broadcasts unchanged.
+function syncCombatIntoState(player) {
+  player.state.health = player.combat.health;
+  player.state.maxHealth = player.combat.maxHealth;
+  player.state.dead = player.combat.dead;
+}
+
+function applyDamageToPlayer(playerId, amount, enemyId) {
+  const player = players.get(playerId);
+
+  // Requirement #2: a dead player must not receive damage, full stop --
+  // enforced here at the single point damage is ever applied, not just by
+  // EnemyWorld choosing not to target them.
+  if (!player || player.combat.dead || !Number.isFinite(amount) || amount <= 0) {
+    return;
+  }
+
+  player.combat.health = Math.max(0, player.combat.health - amount);
+
+  if (player.combat.health <= 0) {
+    player.combat.dead = true;
+    player.combat.respawnAt = Date.now() + PLAYER_CONFIG.respawnDelay * 1000;
+  }
+
+  syncCombatIntoState(player);
+}
+
+function onEnemyKilled(killerPlayerId, enemy) {
+  const killer = players.get(killerPlayerId);
+  if (!killer) return;
+
+  const xpReward = enemy.kind === "boss"
+    ? ENEMY_CONFIG.boss.xpReward
+    : ENEMY_CONFIG.normal.xpReward;
+
+  send(killer.ws, {
+    type: "enemyKilled",
+    enemyId: enemy.id,
+    kind: enemy.kind,
+    xpReward
+  });
 }
 
 // Only the turret's state/aim/fire-event fields are ever synchronized (see
@@ -420,10 +509,12 @@ function validateState(raw) {
     paused: raw.paused === true,
     turret: validateTurret(raw.turret),
 
-    // No PvP damage exists server-side (see MultiplayerClient.sendState),
-    // so health is just another client-reported presentation value like
-    // steering/throttle above -- bounded here the same way, never trusted
-    // for anything beyond drawing an HP bar.
+    // Parsed here just to keep this object's shape stable and bounded --
+    // these two fields are ALWAYS immediately overwritten with the
+    // server's own authoritative combat record right after this function
+    // returns (see the "state" message handler's syncCombatIntoState()
+    // call), since enemy damage is no longer client-reported (requirement
+    // #10/#11). Never trust these two parsed values for anything.
     maxHealth: bounded(raw.maxHealth, 1, 100000, 100),
     health: bounded(raw.health, 0, bounded(raw.maxHealth, 1, 100000, 100)),
 
@@ -477,6 +568,7 @@ wss.on("connection", (ws, request) => {
     color: COLORS[slot],
     spawn,
     state: initialState(spawn),
+    combat: initialCombat(),
     lastSequence: -1,
     rateWindow: Date.now(),
     messageCount: 0,
@@ -500,7 +592,12 @@ wss.on("connection", (ws, request) => {
     protocol: 1,
     self: publicPlayer(player),
     players: Array.from(players.values(), publicPlayer),
-    leaderboard: buildLeaderboard()
+    leaderboard: buildLeaderboard(),
+
+    // New player joining must see the CURRENT enemy world, never spawn
+    // their own separate set (requirement #8's "initial enemy state when a
+    // player joins").
+    enemies: enemyWorld.serialize(players)
   });
 
   broadcast({
@@ -555,6 +652,41 @@ wss.on("connection", (ws, request) => {
 
       player.lastSequence = message.sequence;
       player.state = state;
+
+      // health/maxHealth/dead on the incoming state are whatever the
+      // client last reported for itself -- now that enemy damage is
+      // authoritative (requirement #10/#11), those three fields must
+      // always be overwritten with the server's own combat record rather
+      // than trusted from the client, immediately after every state
+      // update.
+      syncCombatIntoState(player);
+      return;
+    }
+
+    if (message?.type === "turretHit") {
+      // A player's turret reports "I hit enemy X for Y damage" -- the
+      // server is the one that actually applies it (requirement #10),
+      // validates it's plausible, and figures out whether that shot was
+      // the killing blow (for XP -- see onEnemyKilled).
+      if (player.combat.dead) return;
+
+      const enemyId = message.enemyId;
+
+      if (
+        typeof enemyId !== "string" ||
+        enemyId.length === 0 ||
+        enemyId.length > MAX_ENEMY_ID_LENGTH
+      ) {
+        return;
+      }
+
+      const damage = Number(message.damage);
+
+      if (!Number.isFinite(damage) || damage <= 0 || damage > MAX_TURRET_HIT_DAMAGE) {
+        return;
+      }
+
+      enemyWorld.applyDamage(enemyId, damage, player.id);
       return;
     }
 
@@ -623,6 +755,9 @@ wss.on("connection", (ws, request) => {
   });
 });
 
+enemyWorld.onPlayerDamage = applyDamageToPlayer;
+enemyWorld.onEnemyKilled = onEnemyKilled;
+
 const snapshotTimer = setInterval(() => {
   if (!players.size) return;
 
@@ -634,6 +769,45 @@ const snapshotTimer = setInterval(() => {
     }))
   });
 }, 1000 / SNAPSHOT_RATE);
+
+// ---------------------------------------------------------------------------
+// ENEMY SIMULATION TICK (requirements #5/#6/#8)
+// ---------------------------------------------------------------------------
+// Runs the ONE authoritative enemy simulation and broadcasts its resulting
+// state to every connected player at a fixed rate, independent of the
+// per-player driving-state snapshot above. Also handles authoritative
+// player-combat respawn timing here, since it's driven by the same clock.
+// ---------------------------------------------------------------------------
+let lastEnemyTick = Date.now();
+
+const enemyTimer = setInterval(() => {
+  const now = Date.now();
+  const dt = Math.min(0.25, (now - lastEnemyTick) / 1000);
+  lastEnemyTick = now;
+
+  // Authoritative respawn: revive any player whose respawn delay elapsed.
+  // Controls/targetability are restored automatically for them from this
+  // point on -- EnemyWorld.findNearestPlayer() only ever considers players
+  // with combat.dead === false, and the client re-enables movement input
+  // the moment it sees its own `dead` flag go false (see
+  // PlayerHealth.applyServerState on the client).
+  for (const player of players.values()) {
+    if (player.combat.dead && now >= player.combat.respawnAt) {
+      player.combat.dead = false;
+      player.combat.health = player.combat.maxHealth;
+      syncCombatIntoState(player);
+    }
+  }
+
+  if (players.size > 0) {
+    enemyWorld.update(dt, players);
+
+    broadcast({
+      type: "enemies",
+      enemies: enemyWorld.serialize(players)
+    });
+  }
+}, ENEMY_TICK_MS);
 
 const heartbeatTimer = setInterval(() => {
   for (const ws of wss.clients) {
@@ -649,6 +823,7 @@ const heartbeatTimer = setInterval(() => {
 
 function shutdown() {
   clearInterval(snapshotTimer);
+  clearInterval(enemyTimer);
   clearInterval(heartbeatTimer);
 
   for (const ws of wss.clients) {

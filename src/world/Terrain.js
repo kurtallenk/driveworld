@@ -1,27 +1,18 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
+import { hillHeight, WORLD_SIZE } from "./WorldGeometry.js";
 
 export function createTerrain(scene, physics) {
-  const size = 400;
+  const size = WORLD_SIZE;
   const divisions = 200;
   const step = size / divisions;
   const half = size / 2;
 
   const data = [];
 
-  function hillHeight(x, z) {
-    // Keep the central road grid and neighborhood area flat; only the
-    // outer edges near the boundary walls roll into hills.
-    const fade = THREE.MathUtils.smoothstep(Math.abs(x), 150, 195);
-
-    return fade * (
-      3.5 +
-      Math.sin(x * 0.06) * 2 +
-      Math.cos(z * 0.07) * 1.5 +
-      Math.sin((x + z) * 0.035)
-    );
-  }
-
+  // hillHeight() lives in WorldGeometry.js -- shared with the server (see
+  // that file's header comment) so authoritative enemy spawn placement
+  // samples the exact same terrain every client renders.
   for (let i = 0; i <= divisions; i++) {
     data[i] = [];
 

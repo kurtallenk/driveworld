@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { buildRoadRoutes, surfaceAt as classifySurfaceAt } from "./WorldGeometry.js";
 
 export function createRoads(scene, terrain) {
   const routes = [];
@@ -55,84 +56,11 @@ export function createRoads(scene, terrain) {
     scene.add(mesh);
   }
 
-  const straight = [];
-  for (let z = -170; z <= 170; z += 2) {
-    straight.push({ x: 0, z });
+  // Route point generation itself lives in WorldGeometry.js (shared with
+  // the server -- see that file's header comment); this just draws them.
+  for (const route of buildRoadRoutes()) {
+    addRoute(route.points, route.width, route.surface, route.color);
   }
-
-  addRoute(straight, 12, "asphalt", 0x353d44);
-
-  const loop = [];
-  for (let i = 0; i <= 160; i++) {
-    const angle = i / 160 * Math.PI * 2;
-
-    loop.push({
-      x: Math.sin(angle) * 36,
-      z: Math.cos(angle) * 70
-    });
-  }
-
-  addRoute(loop, 8, "asphalt", 0x394148);
-
-  const dirt = [];
-  for (let i = 0; i <= 100; i++) {
-    const t = i / 100;
-
-    dirt.push({
-      x: 35 + Math.sin(t * Math.PI) * 40,
-      z: -65 + t * 130
-    });
-  }
-
-  addRoute(dirt, 6, "dirt", 0xa5875c);
-
-  // Cross street north of the loop: a straight east-west road that
-  // intersects the main north-south road, extending the drivable area.
-  const crossNorth = [];
-  for (let x = -170; x <= 170; x += 2) {
-    crossNorth.push({ x, z: 100 });
-  }
-
-  addRoute(crossNorth, 10, "asphalt", 0x3a424a);
-
-  // Cross street south of the spawn pad: a second east-west intersection
-  // that turns the road layout into a connected grid.
-  const crossSouth = [];
-  for (let x = -150; x <= 150; x += 2) {
-    crossSouth.push({ x, z: -130 });
-  }
-
-  addRoute(crossSouth, 10, "asphalt", 0x3a424a);
-
-  // Curving connector: sweeps out from the east side of the loop toward
-  // the new neighborhood, giving the network real turns instead of only
-  // straight lines.
-  const connector = [];
-  for (let i = 0; i <= 120; i++) {
-    const t = i / 120;
-
-    connector.push({
-      x: 36 + t * 114,
-      z: Math.sin(t * Math.PI) * 45 + t * 10
-    });
-  }
-
-  addRoute(connector, 8, "asphalt", 0x3a424a);
-
-  // Neighborhood loop: a small residential circuit around the new house,
-  // reached via the connector road above. Kept well inside the map
-  // boundary walls (+-199).
-  const neighborhood = [];
-  for (let i = 0; i <= 120; i++) {
-    const angle = i / 120 * Math.PI * 2;
-
-    neighborhood.push({
-      x: 150 + Math.cos(angle) * 30,
-      z: 35 + Math.sin(angle) * 28
-    });
-  }
-
-  addRoute(neighborhood, 7, "asphalt", 0x3f474e);
 
   // Flat test pad covering the existing spawn location.
   const pad = new THREE.Mesh(
@@ -159,47 +87,12 @@ export function createRoads(scene, terrain) {
     scene.add(stripe);
   }
 
-  function distanceToSegment(x, z, a, b) {
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const lengthSquared = dx * dx + dz * dz;
+  // classifySurfaceAt (WorldGeometry.js) implements the exact same
+  // "later-painted routes win" search this used to do inline -- kept as a
+  // single shared implementation so the server's grass/asphalt/dirt
+  // classification for enemy spawn validation can never drift from what's
+  // actually drawn here.
+  terrain.body.surfaceAt = point => classifySurfaceAt(point.x, point.z);
 
-    const t = lengthSquared === 0 ? 0 : THREE.MathUtils.clamp(
-      ((x - a.x) * dx + (z - a.z) * dz) / lengthSquared,
-      0,
-      1
-    );
-
-    return Math.hypot(
-      x - (a.x + t * dx),
-      z - (a.z + t * dz)
-    );
-  }
-
-  function surfaceAt(x, z) {
-    if (Math.abs(x) <= 22 && Math.abs(z + 65) <= 17) {
-      return "asphalt";
-    }
-
-    // Later-painted routes win where surface ribbons overlap.
-    for (let r = routes.length - 1; r >= 0; r--) {
-      const route = routes[r];
-
-      for (let i = 0; i < route.points.length - 1; i++) {
-        if (
-          distanceToSegment(
-            x, z, route.points[i], route.points[i + 1]
-          ) <= route.width / 2
-        ) {
-          return route.surface;
-        }
-      }
-    }
-
-    return "grass";
-  }
-
-  terrain.body.surfaceAt = point => surfaceAt(point.x, point.z);
-
-  return { surfaceAt };
+  return { surfaceAt: classifySurfaceAt };
 }

@@ -124,33 +124,35 @@ export class MultiplayerClient {
       }
     });
 
-    this.leaderboardHeading = document.createElement("strong");
-    this.leaderboardHeading.className = "op-leaderboard-heading";
-    this.leaderboardHeading.textContent = "Delivery leaderboard";
+    // this.leaderboardHeading = document.createElement("strong");
+    // this.leaderboardHeading.className = "op-leaderboard-heading";
+    // this.leaderboardHeading.textContent = "Delivery leaderboard";
 
-    this.leaderboardList = document.createElement("ol");
-    this.leaderboardList.className = "op-leaderboard-list";
+    // this.leaderboardList = document.createElement("ol");
+    // this.leaderboardList.className = "op-leaderboard-list";
 
-    this.leaderboardEmpty = document.createElement("small");
-    this.leaderboardEmpty.className = "op-leaderboard-empty";
-    this.leaderboardEmpty.textContent = "No deliveries yet this session.";
+    // this.leaderboardEmpty = document.createElement("small");
+    // this.leaderboardEmpty.className = "op-leaderboard-empty";
+    // this.leaderboardEmpty.textContent = "No deliveries yet this session.";
 
     this.bodyInner.append(
       this.status,
       this.count,
       this.details,
-      this.button,
-      this.leaderboardHeading,
-      this.leaderboardList,
-      this.leaderboardEmpty
+      this.button
     );
+
+    
+      // this.leaderboardHeading,
+      // this.leaderboardList,
+      // this.leaderboardEmpty
 
     this.body.append(this.bodyInner);
     this.panel.append(this.toggleButton, this.body);
 
     document.body.append(this.panel);
     this.updateCount();
-    this.updateLeaderboard([]);
+    // this.updateLeaderboard([]);
 
     // Keeps other UI (the mobile HUD in particular) from ever sitting
     // underneath this panel, in either state, at any viewport size — see
@@ -250,6 +252,13 @@ export class MultiplayerClient {
       this.selfId = null;
       this.clearRemotes();
 
+      // Multiplayer connection lost -- fall back to local/offline
+      // simulation rather than leaving enemies/combat frozen on whatever
+      // the last server snapshot said (requirement #12: game stays
+      // playable, this time without a server).
+      this.game.targetSystem?.disableNetworkedMode();
+      this.game.playerHealth?.disableNetworkedMode();
+
       if (!this.running) return;
 
       if (event.code === 4001) {
@@ -298,6 +307,21 @@ export class MultiplayerClient {
 
       this.applyAssignment(message.self);
 
+      // From here on, enemy identity/position/HP/death and this client's
+      // own combat HP/dead are 100% server-authoritative (requirements
+      // #5/#6/#10/#11) -- TargetSystem/PlayerHealth stop running their own
+      // local simulations and just render whatever the server reports.
+      this.game.targetSystem?.enableNetworkedMode();
+      this.game.playerHealth?.enableNetworkedMode();
+
+      // New player joining receives the CURRENT enemy world in this same
+      // message, not an empty/fresh one (requirement #8).
+      this.game.targetSystem?.applyServerState(
+        message.enemies ?? [],
+        this.game.camera,
+        this.game.audio
+      );
+
       for (const player of message.players) {
         this.addPlayer(player);
       }
@@ -306,7 +330,7 @@ export class MultiplayerClient {
         `ONLINE · ${message.self.name}`;
 
       this.updateCount();
-      this.updateLeaderboard(message.leaderboard ?? []);
+      // this.updateLeaderboard(message.leaderboard ?? []);
       this.chatPanel?.addSystemMessage(`You joined as ${message.self.name}.`);
       return;
     }
@@ -334,16 +358,47 @@ export class MultiplayerClient {
       const now = performance.now();
 
       for (const player of message.players) {
+        if (player.id === this.selfId) {
+          // This client's own HP/dead is authoritative from here (see the
+          // "welcome" handler above) -- apply it the same way every other
+          // player's state already gets applied, instead of trusting the
+          // locally-simulated PlayerHealth.
+          this.game.playerHealth?.applyServerState(
+            player.state.health,
+            player.state.maxHealth,
+            player.state.dead
+          );
+          continue;
+        }
+
         this.remotes.get(player.id)?.pushState(player.state, now);
       }
 
       return;
     }
 
-    if (message.type === "leaderboard") {
-      this.updateLeaderboard(message.entries ?? []);
+    if (message.type === "enemies") {
+      // The single authoritative enemy world (requirements #5/#6) -- see
+      // TargetSystem.applyServerState for how this reconciles into local
+      // Target visuals without creating duplicates (requirement #9).
+      this.game.targetSystem?.applyServerState(
+        message.enemies ?? [],
+        this.game.camera,
+        this.game.audio
+      );
+
       return;
     }
+
+    if (message.type === "enemyKilled") {
+      this.game.handleEnemyKilled?.(message);
+      return;
+    }
+
+    // if (message.type === "leaderboard") {
+    //   this.updateLeaderboard(message.entries ?? []);
+    //   return;
+    // }
 
     if (message.type === "chat") {
       const isLocal = message.playerId === this.selfId;
@@ -476,22 +531,36 @@ export class MultiplayerClient {
           state: "undeployed", yaw: 0, pitch: 0, fireSeq: 0
         },
 
-        // HP bar (see RemoteVehicle.js). This game has no PvP damage, so
-        // health is reported by each client for itself the same way every
-        // other driving/turret field above already is -- there is no
-        // separate authoritative combat source to defer to instead.
+        // HP bar / wreck visuals (see RemoteVehicle.js). Once connected,
+        // health/maxHealth/dead are authoritative server-side (requirement
+        // #10/#11) and the server overwrites these three fields with its
+        // own combat record on every state message -- sent here mainly so
+        // the very first few frames before that sync round-trips aren't
+        // reporting stale/garbage values.
         health: game.playerHealth?.health ?? 0,
         maxHealth: game.playerHealth?.maxHealth ?? 0,
-
-        // Drives the destroyed/wreck visuals on other players' cars (see
-        // RemoteVehicle.js / VehicleDestruction.js). Reported the same way
-        // health is above -- purely presentational, never authoritative.
         dead: game.playerHealth?.dead === true,
 
         // Drives the brighter/faster exhaust look on other players' cars
         // (see ExhaustSystem) -- purely presentational, not re-simulated.
         turbo: game.turbo?.active === true
       }
+    }));
+  }
+
+  sendTurretHit(enemyId, damage) {
+    if (
+      !this.running ||
+      !this.selfId ||
+      this.socket?.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    this.socket.send(JSON.stringify({
+      type: "turretHit",
+      enemyId,
+      damage
     }));
   }
 
@@ -507,21 +576,21 @@ export class MultiplayerClient {
     this.socket.send(JSON.stringify({ type: "delivery" }));
   }
 
-  updateLeaderboard(entries) {
-    this.leaderboardList.innerHTML = "";
+  // updateLeaderboard(entries) {
+  //   this.leaderboardList.innerHTML = "";
 
-    for (const entry of entries) {
-      const item = document.createElement("li");
-      item.textContent = `${entry.name} — ${entry.deliveries} deliveries`;
-      this.leaderboardList.append(item);
-    }
+  //   for (const entry of entries) {
+  //     const item = document.createElement("li");
+  //     item.textContent = `${entry.name} — ${entry.deliveries} deliveries`;
+  //     this.leaderboardList.append(item);
+  //   }
 
-    const hasEntries = entries.length > 0;
-    this.leaderboardList.hidden = !hasEntries;
-    this.leaderboardEmpty.hidden = hasEntries;
+  //   const hasEntries = entries.length > 0;
+  //   this.leaderboardList.hidden = !hasEntries;
+  //   this.leaderboardEmpty.hidden = hasEntries;
 
-    this.syncPanelHeight();
-  }
+  //   this.syncPanelHeight();
+  // }
 
   sendChat(text) {
     if (
