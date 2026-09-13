@@ -34,24 +34,124 @@
     <canvas id="game"></canvas>
 
     <section id="loading">
-      <h1>DRIVEWORLD</h1>
-      <img class="bg_loading" src="src/images/MyCar.avif" alt="">
-      <p id="loading-status">Drive pa more...</p>
-
-      <div class="name-entry">
-        <label for="player-name">Anya nagan mo:</label>
-        <input
-          id="player-name"
-          type="text"
-          maxlength="16"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Your name"
-        />
-        <p id="name-error" role="alert"></p>
+      <div class="intro-scene" aria-hidden="true">
+        <img class="bg_loading" src="src/images/MyCar.avif" alt="">
+        <div class="intro-scrim"></div>
+        <div class="intro-vignette"></div>
       </div>
 
-      <button id="start">Drive</button>
+      <div class="intro">
+        <header class="intro-brand">
+          <p class="intro-kicker">Multiplayer sandbox driving</p>
+          <h1 class="intro-title">DRIVEWORLD</h1>
+          <p class="intro-tagline">
+            Explore <span class="intro-tagline-dot" aria-hidden="true">&bull;</span>
+            Drive <span class="intro-tagline-dot" aria-hidden="true">&bull;</span>
+            Compete
+          </p>
+        </header>
+
+        <div class="intro-body">
+          <div class="intro-main">
+            <div class="name-entry">
+              <p class="name-entry-kicker">Enter your driver name</p>
+              <label for="player-name">Anya nagan mo:</label>
+              <input
+                id="player-name"
+                type="text"
+                maxlength="16"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Your name"
+              />
+              <p id="name-error" role="alert"></p>
+            </div>
+
+            <button id="start" class="intro-drive-btn">
+              <span class="intro-drive-icon" aria-hidden="true">&#128663;</span>
+              <span class="intro-drive-label">Drive</span>
+            </button>
+
+            <p id="loading-status">Drive pa more...</p>
+          </div>
+
+          <aside class="intro-patch" aria-labelledby="intro-patch-title">
+            <div class="intro-patch-header">
+              <h2 id="intro-patch-title">What&rsquo;s new</h2>
+              <span class="intro-patch-version">v0.2</span>
+            </div>
+
+            <ul class="intro-patch-list">
+              <li class="intro-patch-item" style="--patch-color: #6fd0ff">
+                <span class="intro-patch-icon" aria-hidden="true">&#128299;</span>
+                <div class="intro-patch-copy">
+                  <p class="intro-patch-name">
+                    Gun turret <span class="intro-patch-badge">New</span>
+                  </p>
+                  <p class="intro-patch-desc">
+                    Equip your vehicle with a mounted gun turret and take on
+                    targets around the world.
+                  </p>
+                </div>
+              </li>
+
+              <li class="intro-patch-item" style="--patch-color: #ffb35c">
+                <span class="intro-patch-icon" aria-hidden="true">&#9889;</span>
+                <div class="intro-patch-copy">
+                  <p class="intro-patch-name">
+                    Turbo <span class="intro-patch-badge">New</span>
+                  </p>
+                  <p class="intro-patch-desc">
+                    Hit Shift on desktop or the mobile Turbo button for a burst
+                    of speed &mdash; it has a short cooldown, so use it wisely.
+                  </p>
+                </div>
+              </li>
+
+              <li class="intro-patch-item" style="--patch-color: #ff6c65">
+                <span class="intro-patch-icon" aria-hidden="true">&#127919;</span>
+                <div class="intro-patch-copy">
+                  <p class="intro-patch-name">
+                    Enemy targets <span class="intro-patch-badge">New</span>
+                  </p>
+                  <p class="intro-patch-desc">
+                    New targets give you something to aim for and add more
+                    action to your driving sessions.
+                  </p>
+                </div>
+              </li>
+
+              <li class="intro-patch-item" style="--patch-color: #c7dbf6">
+                <span class="intro-patch-icon" aria-hidden="true">&#128241;</span>
+                <div class="intro-patch-copy">
+                  <p class="intro-patch-name">
+                    Mobile UI <span class="intro-patch-badge">New</span>
+                  </p>
+                  <p class="intro-patch-desc">
+                    Improved touch controls make DriveWorld easier to play on
+                    phones and tablets.
+                  </p>
+                </div>
+              </li>
+
+              <li class="intro-patch-item" style="--patch-color: #f5a3a3">
+                <span class="intro-patch-icon" aria-hidden="true">&#10084;&#65039;</span>
+                <div class="intro-patch-copy">
+                  <p class="intro-patch-name">
+                    Player HP <span class="intro-patch-badge">New</span>
+                  </p>
+                  <p class="intro-patch-desc">
+                    See your health and keep track of your vehicle&rsquo;s
+                    condition during multiplayer gameplay.
+                  </p>
+                </div>
+              </li>
+
+
+            </ul>
+          </aside>
+        </div>
+      </div>
     </section>
 
     <section id="hud" hidden>
