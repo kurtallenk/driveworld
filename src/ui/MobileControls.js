@@ -36,6 +36,7 @@ export class MobileControls {
     this.bindPedal(this.clutchEl, "clutch");
     this.bindShifter();
     this.bindTurret();
+    this.bindTurbo();
     this.bindOrientation();
 
     this.root.hidden = true;
@@ -75,12 +76,24 @@ export class MobileControls {
       '<span class="mc-turret-icon" aria-hidden="true">&#8982;</span>' +
       '<span class="mc-turret-text">TURRET</span>';
 
-    // Groups the turret button with the pedal stack under one fixed
-    // bottom-right anchor, so the pair reflows together instead of the
-    // turret button needing its own separately-tuned position.
+    // Turbo/boost button. Unlike the turret button (a tap-triggered
+    // toggle), this one is press-and-hold -- same held semantics as
+    // desktop SHIFT (see InputManager.isTurboRequested) -- and shows the
+    // ready/active/cooldown state driven by Game via setTurboState().
+    this.turboEl = document.createElement("button");
+    this.turboEl.type = "button";
+    this.turboEl.className = "mc-turbo-btn";
+    this.turboEl.setAttribute("aria-label", "Turbo boost");
+    this.turboEl.innerHTML =
+      '<span class="mc-turbo-icon" aria-hidden="true">&#9889;</span>' +
+      '<span class="mc-turbo-text">TURBO</span>';
+
+    // Groups the turbo/turret buttons with the pedal stack under one fixed
+    // bottom-right anchor, so the group reflows together instead of each
+    // button needing its own separately-tuned position.
     this.rightClusterEl = document.createElement("div");
     this.rightClusterEl.className = "mc-right-cluster";
-    this.rightClusterEl.append(this.turretEl, this.pedalsEl);
+    this.rightClusterEl.append(this.turboEl, this.turretEl, this.pedalsEl);
 
     // Bottom center: H-shifter (manual mode only).
     this.shifterEl = document.createElement("div");
@@ -146,6 +159,7 @@ export class MobileControls {
     if (!this.active) {
       this.releaseAllPedals();
       this.resetSteering();
+      this.input.setMobileTurboHeld(false);
     } else {
       requestAnimationFrame(() => this.centerShifterKnob?.());
     }
@@ -313,6 +327,50 @@ export class MobileControls {
     el.addEventListener("pointerup", release);
     el.addEventListener("pointercancel", release);
     el.addEventListener("lostpointercapture", release);
+  }
+
+  // ---- Turbo -----------------------------------------------------------
+
+  bindTurbo() {
+    const el = this.turboEl;
+    let pointerId = null;
+
+    // Press/release drives InputManager.mobileTurboHeld directly -- the
+    // same held-while-pressed pattern as the pedals above, since turbo
+    // (unlike the turret) needs to stay active for as long as the button
+    // is down, not just fire once per tap.
+    const press = event => {
+      if (pointerId !== null) return;
+
+      pointerId = event.pointerId;
+      el.setPointerCapture(pointerId);
+      this.input.setMobileTurboHeld(true);
+    };
+
+    const release = event => {
+      if (event.pointerId !== pointerId) return;
+      pointerId = null;
+      this.input.setMobileTurboHeld(false);
+    };
+
+    el.addEventListener("pointerdown", press);
+    el.addEventListener("pointerup", release);
+    el.addEventListener("pointercancel", release);
+    el.addEventListener("lostpointercapture", release);
+  }
+
+  // Called by Game once per HUD tick with the shared TurboSystem's current
+  // state, so desktop's dashboard pill and this button always agree --
+  // there is exactly one turbo state machine (see TurboSystem.js), this
+  // just reflects it visually.
+  setTurboState(state, cooldownFraction = 0) {
+    this.turboEl.classList.toggle("mc-turbo-btn--active", state === "active");
+    this.turboEl.classList.toggle("mc-turbo-btn--cooldown", state === "cooldown");
+
+    this.turboEl.style.setProperty(
+      "--mc-turbo-cooldown-frac",
+      String(state === "cooldown" ? cooldownFraction : 0)
+    );
   }
 
   // ---- H-shifter -----------------------------------------------------

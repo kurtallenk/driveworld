@@ -474,7 +474,18 @@ export class MultiplayerClient {
         // rather than receiving per-part transforms every frame.
         turret: game.turret?.getNetworkState() ?? {
           state: "undeployed", yaw: 0, pitch: 0, fireSeq: 0
-        }
+        },
+
+        // HP bar (see RemoteVehicle.js). This game has no PvP damage, so
+        // health is reported by each client for itself the same way every
+        // other driving/turret field above already is -- there is no
+        // separate authoritative combat source to defer to instead.
+        health: game.playerHealth?.health ?? 0,
+        maxHealth: game.playerHealth?.maxHealth ?? 0,
+
+        // Drives the brighter/faster exhaust look on other players' cars
+        // (see ExhaustSystem) -- purely presentational, not re-simulated.
+        turbo: game.turbo?.active === true
       }
     }));
   }
@@ -537,7 +548,7 @@ export class MultiplayerClient {
     this.lastRenderTime = now;
 
     for (const remote of this.remotes.values()) {
-      remote.update(now, dt);
+      remote.update(now, dt, this.game.camera);
     }
 
     this.localBubble.update(now);

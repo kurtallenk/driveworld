@@ -69,10 +69,19 @@ export class InputManager {
     };
     this.mobileGear = 0;
 
+    // Turbo request state. Desktop reads straight off the held SHIFT
+    // key(s) below; MobileControls sets this directly via
+    // setMobileTurboHeld(), the same way it drives mobileState/mobileGear.
+    // isTurboRequested() below is the single place both are combined, so
+    // Game only ever asks one thing "is turbo requested right now" instead
+    // of juggling two separate input sources itself.
+    this.mobileTurboHeld = false;
+
     this.restorePreference();
 
     const handled = new Set([
-      "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR", "KeyF"
+      "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR", "KeyF",
+      "ShiftLeft", "ShiftRight"
     ]);
 
     // Same convention as CameraManager: never hijack keys while the
@@ -114,6 +123,7 @@ export class InputManager {
       this.keys.clear();
       this.resetRequested = false;
       this.turretToggleRequested = false;
+      this.mobileTurboHeld = false;
       this.disarm();
     };
 
@@ -212,6 +222,7 @@ export class InputManager {
       steering: 0, throttle: 0, brake: 0, clutch: 0, handbrake: 0
     };
     this.mobileGear = 0;
+    this.mobileTurboHeld = false;
     this.activeSource = "Mobile Touch";
     this.status = "Touch controls active";
   }
@@ -228,6 +239,26 @@ export class InputManager {
 
   setMobileGear(gear) {
     this.mobileGear = gear;
+  }
+
+  // Called by MobileControls while the touch turbo button is held/released.
+  setMobileTurboHeld(held) {
+    this.mobileTurboHeld = held === true;
+  }
+
+  // Desktop SHIFT and the mobile turbo button both funnel through here --
+  // TurboSystem.update() (see Game.js) is the only thing that actually
+  // decides whether a boost happens, so this is purely "is the player
+  // asking for one right now", regardless of which control they used.
+  // Deliberately reads the held key directly (like keyboardInput() does)
+  // rather than an edge-triggered flag, since turbo needs to stay active
+  // for as long as SHIFT/the button stays down.
+  isTurboRequested() {
+    return (
+      this.keys.has("ShiftLeft") ||
+      this.keys.has("ShiftRight") ||
+      this.mobileTurboHeld
+    );
   }
 
   // Edge-triggered, same semantics as the KeyF keydown handler above (see

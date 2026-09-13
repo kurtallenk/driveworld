@@ -2,6 +2,8 @@ import * as THREE from "three";
 import * as CANNON from "cannon-es";
 import { ChatBubble } from "./ChatBubble.js";
 import { RemoteTurret } from "../turret/RemoteTurret.js";
+import { ExhaustSystem } from "../vehicle/ExhaustSystem.js";
+import { HealthBar } from "../gameplay/HealthBar.js";
 import {
   COLLISION_GROUPS,
   REMOTE_VEHICLE_CANNON_MATERIAL
@@ -318,6 +320,26 @@ export class RemoteVehicle {
     addBox(this.root, [1.85, 0.15, 0.15], [0, 0, -2.02], mat.dark);
     createGrille(mat, this.root, 2.05);
 
+    // Exhaust outlets (visual + attachment points for ExhaustSystem).
+    // Mirrors the local player's Vehicle.js placement, adapted to this
+    // lighter model's rear bumper depth.
+    this.exhaustPoints = [];
+    for (const side of [-1, 1]) {
+      const position = [side * 0.5, -0.12, -2.06];
+
+      addMesh(
+        this.root,
+        new THREE.CylinderGeometry(0.045, 0.045, 0.07, 12),
+        mat.chrome,
+        position,
+        [Math.PI / 2, 0, 0]
+      );
+
+      this.exhaustPoints.push(
+        new THREE.Vector3(position[0], position[1], position[2] - 0.07)
+      );
+    }
+
     // ---- Headlights / taillights --------------------------------------------
     for (const side of [-1, 1]) {
       createHeadlight(mat, side, this.root);
@@ -406,6 +428,17 @@ export class RemoteVehicle {
     this.chatBubble = new ChatBubble(this.root, BUBBLE_ANCHOR_Y);
     this.turret = new RemoteTurret(this.root, this.scene, player.color);
 
+    this.exhaust = new ExhaustSystem(scene, this.root, this.exhaustPoints);
+
+    // Other players' HP bar. Reuses the exact same billboarded 3D bar the
+    // local player's own HP uses (Game.js's this.playerHealthBar) rather
+    // than a second, separately-styled HP UI -- see HealthBar.js. Sits a
+    // little above the nameplate sprite. Hidden until the first real health
+    // value arrives (HealthBar starts hidden on its own).
+    this.healthBar = new HealthBar(scene, {
+      width: 1.6, height: 0.16, yOffset: 2.65
+    });
+
     this.positionA = new THREE.Vector3();
     this.positionB = new THREE.Vector3();
     this.rotationA = new THREE.Quaternion();
@@ -450,6 +483,20 @@ export class RemoteVehicle {
     // current state (including turret) whether it arrived via "welcome",
     // "join", or a regular "snapshot".
     this.turret.setNetworkState(state.turret);
+
+    // HP bar. Health is reported by each client for itself (see
+    // MultiplayerClient.sendState) the same way position/steering/turret
+    // state already are -- this game has no PvP damage between players, so
+    // there is no separate server-authoritative combat value to defer to
+    // here. Missing/invalid numbers simply leave the bar in its last known
+    // (or initially hidden) state rather than drawing a wrong one.
+    if (
+      Number.isFinite(state.health) &&
+      Number.isFinite(state.maxHealth) &&
+      state.maxHealth > 0
+    ) {
+      this.healthBar.setRatio(state.health / state.maxHealth);
+    }
   }
 
   // Called by MultiplayerClient when a `chat` message arrives for this
@@ -485,7 +532,9 @@ export class RemoteVehicle {
     this.body.aabbNeedsUpdate = true;
   }
 
-  update(now, dt) {
+  // camera is optional (billboards the HP bar and exhaust puffs toward it);
+  // callers that don't pass one just skip that per-frame orientation update.
+  update(now, dt, camera = null) {
     this.chatBubble.update(now);
 
     if (!this.samples.length) {
@@ -558,11 +607,28 @@ export class RemoteVehicle {
     // turret's own world-matrix math (muzzle position for fire effects)
     // reflects this frame's vehicle transform.
     this.turret.update(dt);
+
+    // this.root.matrixWorld must reflect the position set above; Three
+    // only refreshes it during rendering, so ExhaustSystem.emit() (which
+    // reads matrixWorld) works off a one-frame-stale transform. That lag
+    // is imperceptible for a trailing exhaust puff.
+    this.root.updateMatrixWorld();
+
+    this.exhaust.update(dt, camera, {
+      running: state.engineRunning === true,
+      boosting: state.turbo === true
+    });
+
+    if (camera) {
+      this.healthBar.updateTransform(this.root.position, camera);
+    }
   }
 
   dispose() {
     this.chatBubble.dispose();
     this.turret.dispose();
+    this.exhaust.dispose();
+    this.healthBar.dispose();
     this.scene.remove(this.root);
 
     if (this.body) {

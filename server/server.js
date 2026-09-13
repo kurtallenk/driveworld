@@ -319,7 +319,10 @@ function initialState(spawn) {
     engineRunning: false,
     mode: "arcade",
     paused: false,
-    turret: initialTurretState()
+    turret: initialTurretState(),
+    health: 100,
+    maxHealth: 100,
+    turbo: false
   };
 }
 
@@ -414,7 +417,16 @@ function validateState(raw) {
     engineRunning: raw.engineRunning === true,
     mode: raw.mode === "manual" ? "manual" : "arcade",
     paused: raw.paused === true,
-    turret: validateTurret(raw.turret)
+    turret: validateTurret(raw.turret),
+
+    // No PvP damage exists server-side (see MultiplayerClient.sendState),
+    // so health is just another client-reported presentation value like
+    // steering/throttle above -- bounded here the same way, never trusted
+    // for anything beyond drawing an HP bar.
+    maxHealth: bounded(raw.maxHealth, 1, 100000, 100),
+    health: bounded(raw.health, 0, bounded(raw.maxHealth, 1, 100000, 100)),
+
+    turbo: raw.turbo === true
   };
 }
 

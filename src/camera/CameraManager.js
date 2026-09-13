@@ -85,6 +85,12 @@ export class CameraManager {
 
     this.seat = loadSeatPosition();
 
+    // Turbo FOV kick: smoothed toward a small additive boost while turbo is
+    // active (see setTurboActive(), called from Game each fixed tick), on
+    // top of whatever base FOV getFov() already returns.
+    this.turboActive = false;
+    this.turboFovBoost = 0;
+
     this.eye = new THREE.Vector3();
     this.rotation = new THREE.Quaternion();
 
@@ -301,6 +307,13 @@ export class CameraManager {
     );
   }
 
+  // Called by Game once per fixed tick with the shared TurboSystem's
+  // current active/inactive state (see TurboSystem.js). update() below
+  // smooths the actual FOV change toward this target every frame.
+  setTurboActive(active) {
+    this.turboActive = active === true;
+  }
+
   reset() {
     this.stopDragging();
 
@@ -311,6 +324,8 @@ export class CameraManager {
 
     this.headOffset.set(0, 0, 0);
     this.impactAmount = 0;
+    this.turboActive = false;
+    this.turboFovBoost = 0;
 
     this.chase.reset();
 
@@ -454,7 +469,14 @@ export class CameraManager {
 
     this.impactAmount *= Math.exp(-7 * dt);
 
-    const desiredFov = this.getFov();
+    // Subtle FOV widening while turbo is active -- smoothed both ways so
+    // it eases in/out rather than snapping, matching the exponential-blend
+    // approach already used for orbit/look-around below.
+    const turboFovTarget = this.turboActive ? 6 : 0;
+    this.turboFovBoost +=
+      (turboFovTarget - this.turboFovBoost) * (1 - Math.exp(-8 * dt));
+
+    const desiredFov = this.getFov() + this.turboFovBoost;
 
     if (this.camera.fov !== desiredFov) {
       this.camera.fov = desiredFov;

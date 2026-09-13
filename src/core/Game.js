@@ -21,6 +21,8 @@ import { PlayerHealth } from "../gameplay/PlayerHealth.js";
 import { LevelSystem } from "../gameplay/LevelSystem.js";
 import { HealthBar } from "../gameplay/HealthBar.js";
 import { MANUAL_CONFIG } from "../vehicle/ManualDrivetrain.js";
+import { TurboSystem, applyTurboToControls } from "../vehicle/TurboSystem.js";
+import { ExhaustSystem } from "../vehicle/ExhaustSystem.js";
 
 // Tachometer scale for the dashboard's RPM arc. Redline comes straight
 // from the manual drivetrain's own config, so the gauge always agrees
@@ -132,6 +134,15 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       this.scene, this.vehiclePhysics, this.player.vehicleColor
     );
 
+    // --- Turbo / boost + exhaust -----------------------------------------
+    this.turbo = new TurboSystem();
+
+    this.exhaust = new ExhaustSystem(
+      this.scene, this.vehicle.root, this.vehicle.exhaustPoints
+    );
+
+    this.turboStatusElement = document.querySelector("#turbo-status");
+
     // --- Player HP / leveling ------------------------------------------
     this.playerHealth = new PlayerHealth();
     this.levelSystem = new LevelSystem();
@@ -173,6 +184,7 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       this.controller.reset();
       this.manualController.reset();
       this.vehicleFeedback.reset();
+      this.turbo.reset();
       this.engineStartRequested = false;
       this.cameraRig.reset();
       this.showNotice("Back in the fight!", 1.5);
@@ -434,6 +446,7 @@ if (mobileButton) {
   this.drivingMode = mode;
   this.controller.reset();
   this.manualController.reset();
+  this.turbo.reset();
   this.engineStartRequested = false;
 
   this.drivingStatusElement.textContent = mode === "manual"
@@ -560,6 +573,7 @@ if (this.input.consumeReset()) {
   this.controller.reset();
   this.manualController.reset();
   this.vehicleFeedback.reset();
+  this.turbo.reset();
 
   this.engineStartRequested = false;
 
@@ -636,6 +650,28 @@ if (this.input.consumeReset()) {
         signedSpeed,
         FIXED_DT
       );
+
+  // Turbo / boost. SHIFT (desktop) and the mobile turbo button both feed
+  // isTurboRequested() (see InputManager) -- this is the single place the
+  // resulting boost is actually applied to driving, whichever controller
+  // produced `controls`. Only forward drive is affected -- braking,
+  // handbrake, and reverse are untouched so turbo can't destabilize the
+  // physics or fight the player's brakes.
+  const turboState = this.turbo.update(
+    this.input.isTurboRequested(), FIXED_DT
+  );
+
+  if (turboState.justActivated) {
+    // Small camera kick on activation, reusing the existing impact-shake
+    // system rather than adding a second one (see CameraManager.notifyImpact).
+    this.cameraRig.notifyImpact(5);
+  }
+
+  this.cameraRig.setTurboActive(turboState.active);
+
+  if (turboState.active) {
+    applyTurboToControls(controls, turboState, this.turbo.config);
+  }
 
   this.vehiclePhysics.applyControls(controls);
   this.physics.step(FIXED_DT);
@@ -775,6 +811,15 @@ this.cameraRig.update(
   feedback.acceleration
 );
 
+// Refresh matrixWorld now (Three only does this during rendering) so
+// ExhaustSystem emits from this frame's transform rather than last frame's.
+this.vehicle.root.updateMatrixWorld();
+
+this.exhaust.update(dt, this.camera, {
+  running: engineRunning,
+  boosting: this.turbo.active
+});
+
 this.audio.update({
   rpm: presentationRPM,
   throttle: input.throttle,
@@ -867,6 +912,24 @@ if (DELIVERY_SYSTEM_ENABLED) {
 if (this.turretStatusElement) {
   this.turretStatusElement.textContent = this.turret.statusText;
 }
+
+if (this.turboStatusElement) {
+  const turboLabel = this.turbo.state === "active"
+    ? `TURBO: BOOST ${this.turbo.durationRemaining.toFixed(1)}s`
+    : this.turbo.state === "cooldown"
+      ? `TURBO: COOLDOWN ${this.turbo.cooldownRemaining.toFixed(1)}s`
+      : "TURBO: READY";
+
+  this.turboStatusElement.textContent = turboLabel;
+  this.turboStatusElement.classList.toggle(
+    "dash-pill-turbo--active", this.turbo.state === "active"
+  );
+  this.turboStatusElement.classList.toggle(
+    "dash-pill-turbo--cooldown", this.turbo.state === "cooldown"
+  );
+}
+
+this.mobileControls?.setTurboState(this.turbo.state, this.turbo.cooldownFraction);
 
 this.debugElement.textContent = JSON.stringify({
   activeInput: this.input.activeSource,

@@ -557,14 +557,25 @@ export class Vehicle {
     for (let i = -3; i <= 3; i++) {
       addBox(this.root, [0.03, 0.06, 0.1], [i * 0.2, -0.15, -2.12], mat.trim);
     }
-    // Exhaust outlets.
+    // Exhaust outlets. Their positions are also exposed as
+    // `this.exhaustPoints` (vehicle-local space) so ExhaustSystem can emit
+    // particles from the actual tailpipe tips instead of a guessed offset.
+    this.exhaustPoints = [];
     for (const side of [-1, 1]) {
+      const position = [side * 0.55, -0.16, -2.12];
+
       addMesh(
         this.root,
         new THREE.CylinderGeometry(0.05, 0.05, 0.08, 14),
         mat.chrome,
-        [side * 0.55, -0.16, -2.12],
+        position,
         [Math.PI / 2, 0, 0]
+      );
+
+      // Slightly behind the visible tip so puffs originate just outside
+      // the tailpipe geometry rather than inside it.
+      this.exhaustPoints.push(
+        new THREE.Vector3(position[0], position[1], position[2] - 0.08)
       );
     }
     // Rear badge.
