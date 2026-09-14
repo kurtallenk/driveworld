@@ -7,6 +7,7 @@ import { HealthBar } from "../gameplay/HealthBar.js";
 import { VehicleDestruction } from "../vehicle/VehicleDestruction.js";
 import { VehicleEvolutionRig } from "../vehicle/VehicleEvolution.js";
 import { getEvolutionStage } from "../gameplay/EvolutionConfig.js";
+import { DEFAULT_VEHICLE_TYPE } from "../vehicle/VehicleConfig.js";
 import {
   buildVehicleBody,
   buildWheelGeometries,
@@ -101,7 +102,11 @@ export class RemoteVehicle {
       mat,
       exhaustPoints,
       steeringWheel
-    } = buildVehicleBody(this.root, player.color);
+    } = buildVehicleBody(
+      this.root,
+      player.color,
+      player.vehicleType || DEFAULT_VEHICLE_TYPE
+    );
 
     this.paint = mat.paint;
     this.exhaustPoints = exhaustPoints;
@@ -411,6 +416,14 @@ export class RemoteVehicle {
     // turret's own world-matrix math (muzzle position for fire effects)
     // reflects this frame's vehicle transform.
     this.turret.update(dt);
+
+    // Advances any in-progress armor-reveal animation (see
+    // VehicleEvolutionRig.beginReveal/update). Without this call the newly
+    // added stage group set up by setStage() in pushState() just sits at
+    // its initial near-zero scale forever -- it's added to the scene, but
+    // never actually animates into view for anyone watching live. Mirrors
+    // the same call in the "no samples yet" branch above.
+    this.evolution.update(dt);
 
     // this.root.matrixWorld must reflect the position set above; Three
     // only refreshes it during rendering, so ExhaustSystem.emit() (which

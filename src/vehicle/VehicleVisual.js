@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { DEFAULT_VEHICLE_TYPE } from "./VehicleConfig.js";
 
 // ---------------------------------------------------------------------------
 // VehicleVisual.js
@@ -522,7 +523,21 @@ export function createWheel(geo, mat, inboardSign) {
 //   - dashboardCanvas/dashboardContext/dashboardTexture: canvas-backed
 //     instrument cluster display
 
-export function buildVehicleBody(root, color) {
+// ---------------------------------------------------------------------------
+// buildVehicleBody(root, color, vehicleType) dispatches to the builder for
+// the requested type (see VehicleConfig.js). There is only one builder today
+// -- buildSedanBody -- but callers already pass a type through, so adding a
+// second one later is additive here, not a change to every call site.
+// ---------------------------------------------------------------------------
+export function buildVehicleBody(root, color, vehicleType = DEFAULT_VEHICLE_TYPE) {
+  switch (vehicleType) {
+    case "sedan":
+    default:
+      return buildSedanBody(root, color);
+  }
+}
+
+function buildSedanBody(root, color) {
   const mat = createVehicleMaterials(color);
 
   // +Z = front, +Y = up. Chassis origin remains unchanged.

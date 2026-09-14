@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { createTurretAssembly } from "./TurretModel.js";
 import { applyTurretPose } from "./TurretPose.js";
 import { TurretEffectsPool } from "./TurretEffects.js";
-import { TURRET_CONFIG, TURRET_ANCHOR } from "./TurretConfig.js";
+import { TURRET_CONFIG, LOCAL_TURRET_ANCHOR } from "./TurretConfig.js";
 import { stepAngle, stepToward, clamp, angleDifference } from "./TurretMath.js";
 import { TurretEvolutionRig } from "./TurretEvolution.js";
 import { getTurretEvolutionConfig } from "../gameplay/EvolutionConfig.js";
@@ -39,9 +39,9 @@ export class Turret {
     this.parts = assembly.parts;
 
     assembly.root.position.set(
-      TURRET_ANCHOR.x,
-      TURRET_ANCHOR.y,
-      TURRET_ANCHOR.z
+      LOCAL_TURRET_ANCHOR.x,
+      LOCAL_TURRET_ANCHOR.y,
+      LOCAL_TURRET_ANCHOR.z
     );
     vehicleRoot.add(assembly.root);
 

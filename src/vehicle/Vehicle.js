@@ -5,6 +5,7 @@ import {
   buildWheelGeometries,
   createWheel
 } from "./VehicleVisual.js";
+import { DEFAULT_VEHICLE_TYPE } from "./VehicleConfig.js";
 
 // ---------------------------------------------------------------------------
 // Vehicle
@@ -15,7 +16,7 @@ import {
 // the actual construction code.
 
 export class Vehicle {
-  constructor(scene, physics, color) {
+  constructor(scene, physics, color, vehicleType = DEFAULT_VEHICLE_TYPE) {
     this.physics = physics;
     this.root = new THREE.Group();
     scene.add(this.root);
@@ -28,7 +29,7 @@ export class Vehicle {
       dashboardCanvas,
       dashboardContext,
       dashboardTexture
-    } = buildVehicleBody(this.root, color);
+    } = buildVehicleBody(this.root, color, vehicleType);
 
     this.exhaustPoints = exhaustPoints;
     this.driverEye = driverEye;
