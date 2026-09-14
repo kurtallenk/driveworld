@@ -83,8 +83,8 @@ export class HealthBar {
   updateTransform(anchorWorldPos, camera) {
     this.group.position.set(
       anchorWorldPos.x,
-      anchorWorldPos.y + this.yOffset,
-      anchorWorldPos.z
+      anchorWorldPos.y + this.yOffset-0.5,
+      anchorWorldPos.z+0.5
     );
     this.group.quaternion.copy(camera.quaternion);
   }
