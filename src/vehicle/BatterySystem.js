@@ -18,25 +18,25 @@ export const BATTERY_CONFIG = {
 
   // --- drain, in percent/second -------------------------------------------
   // Very slow baseline drain while the vehicle is powered on but parked.
-  idleDrainRate: 0.08,
+  idleDrainRate: 0.05,
 
   // Substantially higher than idle, but still much lower than turret drain
   // -- driving around should cost meaningfully less than fighting.
-  drivingDrainRate: 0.4,
+  drivingDrainRate: 0.08,
 
   // Turret is the primary/high drain. It ramps up the longer it stays
   // continuously deployed (rather than an unbounded runaway rate, the ramp
   // is capped after turretDrainRampCapTime seconds of continuous use).
-  turretDrainBaseRate: 0.8,
-  turretDrainRampRate: 0.10, // extra %/s drain per second continuously deployed
-  turretDrainRampCapTime: 20, // seconds -- ramp bonus stops growing here
+  turretDrainBaseRate: 0.4,
+  turretDrainRampRate: 0.08, // extra %/s drain per second continuously deployed
+  turretDrainRampCapTime: 10, // seconds -- ramp bonus stops growing here
 
   // Speed (m/s) above which the vehicle counts as "driving" rather than
   // "idle" for drain purposes.
-  movingSpeedThreshold: 0.4,
+  movingSpeedThreshold: 0.25,
 
   // --- charging ------------------------------------------------------------
-  chargingRate: 10, // percent/second while parked in a charging zone
+  chargingRate: 20, // percent/second while parked in a charging zone
 
   // --- states ---------------------------------------------------------------
   // battery <= criticalThreshold -> CRITICAL, <= lowThreshold -> LOW,
@@ -50,7 +50,7 @@ export const BATTERY_CONFIG = {
   // depleted -- the vehicle can still limp toward a charging station, it
   // just becomes very slow. Turret and turbo are fully gated elsewhere
   // (Game.js) rather than scaled, since "offline"/"disabled" are binary.
-  emptyMovementMultiplier: 0.22
+  emptyMovementMultiplier: 0.3
 };
 
 export const BATTERY_STATE = {
