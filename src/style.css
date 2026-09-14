@@ -2348,7 +2348,7 @@ body.mobile-controls-active .dash-engine-pill {
 .mc-handbrake-btn {
   position: fixed;
   right: calc(env(safe-area-inset-right, 0px) + 0.6rem);
-  top: 50%;
+  top: 45%;
   transform: translateY(-50%);
   border-color: #f5745555;
 }
