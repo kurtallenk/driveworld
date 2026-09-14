@@ -18,25 +18,25 @@ export const BATTERY_CONFIG = {
 
   // --- drain, in percent/second -------------------------------------------
   // Very slow baseline drain while the vehicle is powered on but parked.
-  idleDrainRate: 0.15,
+  idleDrainRate: 0.08,
 
   // Substantially higher than idle, but still much lower than turret drain
   // -- driving around should cost meaningfully less than fighting.
-  drivingDrainRate: 0.6,
+  drivingDrainRate: 0.4,
 
   // Turret is the primary/high drain. It ramps up the longer it stays
   // continuously deployed (rather than an unbounded runaway rate, the ramp
   // is capped after turretDrainRampCapTime seconds of continuous use).
-  turretDrainBaseRate: 2.0,
-  turretDrainRampRate: 0.15, // extra %/s drain per second continuously deployed
+  turretDrainBaseRate: 0.8,
+  turretDrainRampRate: 0.10, // extra %/s drain per second continuously deployed
   turretDrainRampCapTime: 20, // seconds -- ramp bonus stops growing here
 
   // Speed (m/s) above which the vehicle counts as "driving" rather than
   // "idle" for drain purposes.
-  movingSpeedThreshold: 0.6,
+  movingSpeedThreshold: 0.4,
 
   // --- charging ------------------------------------------------------------
-  chargingRate: 4, // percent/second while parked in a charging zone
+  chargingRate: 10, // percent/second while parked in a charging zone
 
   // --- states ---------------------------------------------------------------
   // battery <= criticalThreshold -> CRITICAL, <= lowThreshold -> LOW,
