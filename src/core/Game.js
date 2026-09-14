@@ -27,6 +27,8 @@ import { TurboSystem, applyTurboToControls } from "../vehicle/TurboSystem.js";
 import { ExhaustSystem } from "../vehicle/ExhaustSystem.js";
 import { VehicleDestruction } from "../vehicle/VehicleDestruction.js";
 import { getEvolutionStage, getVehicleEvolutionConfig, getTurretEvolutionConfig } from "../gameplay/EvolutionConfig.js";
+import { BatterySystem, BATTERY_CONFIG, applyBatteryToControls } from "../vehicle/BatterySystem.js";
+import { createChargingStation } from "../world/ChargingStation.js";
 
 // Tachometer scale for the dashboard's RPM arc. Redline comes straight
 // from the manual drivetrain's own config, so the gauge always agrees
@@ -90,6 +92,14 @@ this.audio.effectsVolume =
 
     this.world = createWorld(this.scene, this.physics);
 
+    // Safe-zone charging station -- visual + a plain distance-based zone
+    // check (same technique TargetSystem.js already uses for the enemy-
+    // free safe zone), not a new trigger/collision system. See
+    // ChargingStation.js's header comment for the placement reasoning.
+    this.chargingStation = createChargingStation(
+      this.scene, this.physics, this.world.terrain
+    );
+
     // multiplayer.js assigns this once the socket client connects, so the
     // delivery system can report completions for the session leaderboard.
     this.multiplayer = null;
@@ -150,6 +160,15 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     );
 
     this.turboStatusElement = document.querySelector("#turbo-status");
+
+    // --- Battery / energy ------------------------------------------------
+    // onStateChange is wired up further below, once both `this.turret`
+    // and `this.showNotice` exist (mirrors how playerHealth's callbacks
+    // are wired after the things they depend on are constructed).
+    this.battery = new BatterySystem();
+    this.batteryStatusElement = document.querySelector("#battery-status");
+    this.batteryFillElement = document.querySelector("#dash-battery-fill");
+    this.batteryPercentElement = document.querySelector("#dash-battery-percent");
 
     // --- Player HP / leveling ------------------------------------------
     this.playerHealth = new PlayerHealth();
@@ -220,6 +239,7 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       this.manualController.reset();
       this.vehicleFeedback.reset();
       this.turbo.reset();
+      this.battery.reset();
       this.engineStartRequested = false;
       this.cameraRig.reset();
       this.vehicleDestruction.deactivate();
@@ -311,6 +331,25 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     );
 
     this.turretStatusElement = document.querySelector("#turret-status");
+
+    // Battery state-change notices + the empty-battery turret cutoff.
+    // Fires at most once per actual transition (see BatterySystem.js), so
+    // this never spams showNotice() every tick the way a raw threshold
+    // check in the HUD-update block would.
+    this.battery.onStateChange = (newState, oldState) => {
+      if (newState === "empty") {
+        // Immediately offline the turret, same method playerHealth.onDeath
+        // already uses to interrupt an in-progress deploy/cut a live one.
+        this.turret.forceRetract();
+        this.showNotice("BATTERY DEPLETED — TURRET OFFLINE · TURBO DISABLED", 3);
+      } else if (newState === "critical") {
+        this.showNotice("CRITICAL BATTERY — HEAD TO A CHARGING STATION", 2.5);
+      } else if (newState === "low") {
+        this.showNotice("LOW BATTERY", 2);
+      } else if (newState === "full" && oldState !== "full") {
+        this.showNotice("BATTERY FULLY CHARGED", 1.5);
+      }
+    };
 
     this.input = new InputManager();
     this.controller = new ArcadeController();
@@ -658,7 +697,11 @@ if (controllerButton) {
 
     const input = this.input.sample();
 
-    if (this.input.consumeTurretToggle() && !this.playerHealth.dead) {
+    if (
+      this.input.consumeTurretToggle() &&
+      !this.playerHealth.dead &&
+      !this.battery.depleted
+    ) {
       this.turret.toggle();
     }
 
@@ -733,6 +776,7 @@ if (this.input.consumeReset() && !this.playerHealth.dead) {
   this.manualController.reset();
   this.vehicleFeedback.reset();
   this.turbo.reset();
+  this.battery.reset();
 
   this.engineStartRequested = false;
 
@@ -819,14 +863,52 @@ if (this.input.consumeReset() && !this.playerHealth.dead) {
           FIXED_DT
         );
 
+  // Battery / energy. Updated once per fixed physics substep -- same call
+  // site pattern as turbo.update() just below -- so drain/charge is
+  // frame-rate independent and only ever applied from this single place
+  // (see requirement: avoid accidentally draining the battery multiple
+  // times from multiple systems).
+  //
+  // "Driving" vs "idle" is a simple speed threshold off the same
+  // signedSpeed already computed above for the driving controllers.
+  // "Turret engaged" covers deploying/deployed/undeploying -- the servo
+  // and weapon systems are drawing power through the whole transition,
+  // not only once fully deployed. Charging requires the vehicle to be
+  // alive, inside the charging zone, and the turret fully stowed (the
+  // prompt's own recommended behavior, and what keeps "charge" and
+  // "drain" mutually exclusive per tick -- see BatterySystem.js).
+  const moving = Math.abs(signedSpeed) > BATTERY_CONFIG.movingSpeedThreshold;
+  const turretEngaged = this.turret.state !== "undeployed";
+  const inChargingZone = this.chargingStation.isInZone(
+    this.vehiclePhysics.body.position
+  );
+  const canCharge = alive && inChargingZone && this.turret.state === "undeployed";
+
+  const batteryState = this.battery.update(FIXED_DT, {
+    moving, turretEngaged, canCharge
+  });
+
+  // Empty battery: the vehicle can still be driven, just very slowly (see
+  // requirement -- never fully immobilized). Only touches drive/
+  // driveForcePerWheel; braking, handbrake, and steering are untouched.
+  if (batteryState.depleted) {
+    applyBatteryToControls(controls, batteryState, this.battery.config);
+  }
+
   // Turbo / boost. SHIFT (desktop) and the mobile turbo button both feed
   // isTurboRequested() (see InputManager) -- this is the single place the
   // resulting boost is actually applied to driving, whichever controller
   // produced `controls`. Only forward drive is affected -- braking,
   // handbrake, and reverse are untouched so turbo can't destabilize the
   // physics or fight the player's brakes.
+  //
+  // Gated on !battery.depleted: an active turbo sees `requested = false`
+  // the instant the battery hits empty (battery is updated earlier this
+  // same tick, above) and ends immediately via TurboSystem's own existing
+  // "released" path straight into cooldown -- no change to TurboSystem.js
+  // needed.
   const turboState = this.turbo.update(
-    alive && this.input.isTurboRequested(), FIXED_DT
+    alive && !this.battery.depleted && this.input.isTurboRequested(), FIXED_DT
   );
 
   if (turboState.justActivated) {
@@ -1132,6 +1214,54 @@ if (DELIVERY_SYSTEM_ENABLED) {
 
 if (this.turretStatusElement) {
   this.turretStatusElement.textContent = this.turret.statusText;
+}
+
+if (this.batteryStatusElement) {
+  const batteryLabel = this.battery.charging
+    ? `BATTERY: CHARGING ${Math.round(this.battery.percent)}%`
+    : this.battery.state === "empty"
+      ? "BATTERY: DEPLETED"
+      : this.battery.state === "critical"
+        ? `BATTERY: CRITICAL ${Math.round(this.battery.percent)}%`
+        : this.battery.state === "low"
+          ? `BATTERY: LOW ${Math.round(this.battery.percent)}%`
+          : `BATTERY: ${Math.round(this.battery.percent)}%`;
+
+  this.batteryStatusElement.textContent = batteryLabel;
+  this.batteryStatusElement.classList.toggle(
+    "dash-pill-battery--charging", this.battery.charging
+  );
+  this.batteryStatusElement.classList.toggle(
+    "dash-pill-battery--low", this.battery.state === "low"
+  );
+  this.batteryStatusElement.classList.toggle(
+    "dash-pill-battery--critical", this.battery.state === "critical"
+  );
+  this.batteryStatusElement.classList.toggle(
+    "dash-pill-battery--empty", this.battery.state === "empty"
+  );
+}
+
+if (this.batteryPercentElement) {
+  this.batteryPercentElement.textContent = `${Math.round(this.battery.percent)}%`;
+}
+
+if (this.batteryFillElement) {
+  this.batteryFillElement.style.width =
+    `${Math.max(0, Math.min(100, this.battery.ratio * 100))}%`;
+
+  this.batteryFillElement.classList.toggle(
+    "dash-battery-fill--charging", this.battery.charging
+  );
+  this.batteryFillElement.classList.toggle(
+    "dash-battery-fill--low", this.battery.state === "low"
+  );
+  this.batteryFillElement.classList.toggle(
+    "dash-battery-fill--critical", this.battery.state === "critical"
+  );
+  this.batteryFillElement.classList.toggle(
+    "dash-battery-fill--empty", this.battery.state === "empty"
+  );
 }
 
 if (this.turboStatusElement) {

@@ -171,6 +171,9 @@
           <div class="dash-warn" id="warn-damage" data-warn-label="Vehicle condition">
             <svg viewBox="0 0 24 24"><path d="M12 21s-7-4.2-9.3-8.4C1 9 2.6 5.6 6 5.3c2-.2 3.7 1 4.5 2.4C11.3 6.2 13 5 15 5.2c3.5.3 5 3.8 3.5 7.3C19.3 16.8 12 21 12 21z"/></svg>
           </div>
+          <div class="dash-warn" id="warn-battery" data-warn-label="Battery">
+            <svg viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="1.5"/><rect x="20" y="10" width="2" height="4"/><path d="M13 8l-3.5 4.5H12L9.5 16 15 10.5h-2.5L13 8z" fill="currentColor" stroke="none"/></svg>
+          </div>
         </div>
 
         <div class="dash-cluster">
@@ -230,6 +233,14 @@
                 <div id="dash-boost-fill" class="dash-boost-fill"></div>
               </div>
             </div>
+
+            <div class="dash-battery-row">
+              <span class="dash-battery-label">Battery</span>
+              <div class="dash-battery-track">
+                <div id="dash-battery-fill" class="dash-battery-fill"></div>
+              </div>
+              <span id="dash-battery-percent" class="dash-battery-percent">100%</span>
+            </div>
           </div>
         </div>
 
@@ -238,6 +249,7 @@
           <strong id="delivery-count" class="dash-pill dash-pill-score">Deliveries: 0 · Score: 0</strong>
           <div id="turret-status" class="dash-pill dash-pill-turret">TURRET: OFFLINE</div>
           <div id="turbo-status" class="dash-pill dash-pill-turbo">TURBO: READY</div>
+          <div id="battery-status" class="dash-pill dash-pill-battery">BATTERY: 100%</div>
         </div>
 
         <button id="start-engine" type="button" disabled>
