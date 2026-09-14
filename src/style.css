@@ -2349,7 +2349,7 @@ body.mobile-controls-active .dash-engine-pill {
   position: fixed;
   right: calc(env(safe-area-inset-right, 0px) + 0.6rem);
   top: 45%;
-  transform: translateY(-50%);
+  transform: translateY(-10%);
   border-color: #f5745555;
 }
 
