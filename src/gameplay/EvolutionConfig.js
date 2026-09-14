@@ -18,7 +18,7 @@
 // the stage number, so EVOLUTION_MILESTONES[3] === 6 means "stage 3 unlocks
 // at level 6". Extending progression later (level 12, 14, ...) is just
 // appending here plus one more entry in each config table below.
-export const EVOLUTION_MILESTONES = [1, 2, 4, 6, 8, 10];
+export const EVOLUTION_MILESTONES = [1, 5, 10, 15, 20, 25];
 
 // Level 1 -> stage 0, level 3 -> stage 1, level 10+ -> stage 5 (max), etc.
 // Deterministic and monotonic: a stage is never lost between milestones.
