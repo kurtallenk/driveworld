@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { Explosion } from "./ExplosionEffect.js";
 
 // ---------------------------------------------------------------------------
 // Shared, reusable visual effects for turret fire. Geometries/materials are
@@ -129,6 +130,17 @@ export class TurretEffectsPool {
     const burst = new ImpactBurst(position);
     this.scene.add(burst.group);
     this.effects.push(burst);
+  }
+
+  // Layered flash+fireball+shockwave+particles explosion (see
+  // ExplosionEffect.js) -- used for the level-10 player missile and the
+  // APEX Spider's rocket, in place of the small spawnImpact() burst above.
+  // Drops straight into this same pool/update loop, so callers never need
+  // to track it separately.
+  spawnExplosion(position, config) {
+    const explosion = new Explosion(position, config);
+    this.scene.add(explosion.group);
+    this.effects.push(explosion);
   }
 
   update(dt) {

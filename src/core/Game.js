@@ -12,7 +12,9 @@ import { loadPresentationSettings,savePresentationSettings } from "./Presentatio
 import { SettingsMenu } from "../ui/SettingsMenu.js";
 import { VehicleFeedback } from "../vehicle/VehicleFeedback.js";
 import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
+import { ControllerCalibrationWizard } from "../ui/ControllerCalibrationWizard.js";
 import { MobileControls } from "../ui/MobileControls.js";
+import { HudVisibility, HUD_MODE_LABELS } from "../ui/HudVisibility.js";
 import { DeliverySystem, DELIVERY_SYSTEM_ENABLED } from "../gameplay/DeliverySystem.js";
 import { Turret } from "../turret/Turret.js";
 import { TargetSystem } from "../turret/TargetSystem.js";
@@ -442,6 +444,7 @@ document.querySelectorAll("[data-presentation]").forEach(slider => {
 const enableV99Button = document.querySelector("#enable-v99");
 const keyboardButton = document.querySelector("#use-keyboard");
 const mobileButton = document.querySelector("#use-mobile");
+const controllerButton = document.querySelector("#use-controller");
 
 enableV99Button.disabled = false;
 keyboardButton.disabled = false;
@@ -462,6 +465,15 @@ if (mobileButton) {
   mobileButton.addEventListener("click", () => {
     this.input.enableMobile();
     this.mobileControls?.setActive(true);
+  });
+}
+
+if (controllerButton) {
+  controllerButton.disabled = false;
+
+  controllerButton.addEventListener("click", () => {
+    this.input.enableController();
+    this.mobileControls?.setActive(false);
   });
 }
 
@@ -518,7 +530,48 @@ if (mobileButton) {
     this.frame = this.frame.bind(this);
     this.menu = new SettingsMenu();
 
+    // HUD visibility (DEFAULT / SIMPLIFIED / HIDE ALL). Everything this
+    // drives is a body[data-hud-mode] CSS rule (see style.css) — this
+    // class only owns the mode itself, persistence, and the toggle
+    // button's label. It never reaches into individual HUD elements.
+    this.hudModeToggle = document.querySelector("#hud-mode-toggle");
+    this.hudModeToggleLabel = document.querySelector("#hud-mode-toggle-label");
+    this.hudModeRadios = document.querySelectorAll("input[name='hud-mode']");
+
+    // Both the top-right toggle and the ESC > Display > HUD radios only
+    // ever read/write through this.hudVisibility — neither owns its own
+    // state, so they can't drift out of sync with each other.
+    const syncHudModeControls = mode => {
+      if (this.hudModeToggleLabel) {
+        this.hudModeToggleLabel.textContent = `HUD: ${HUD_MODE_LABELS[mode]}`;
+      }
+      this.hudModeRadios.forEach(radio => {
+        radio.checked = radio.value === mode;
+      });
+    };
+
+    this.hudVisibility = new HudVisibility({ onChange: syncHudModeControls });
+    syncHudModeControls(this.hudVisibility.mode);
+
+    if (this.hudModeToggle) {
+      this.hudModeToggle.hidden = false;
+      this.hudModeToggle.addEventListener("click", () => {
+        this.hudVisibility.cycle();
+      });
+    }
+
+    this.hudModeRadios.forEach(radio => {
+      radio.addEventListener("change", () => {
+        if (radio.checked) this.hudVisibility.setMode(radio.value);
+      });
+    });
+
     this.wheelCalibrationWizard = new WheelCalibrationWizard(
+  this.input,
+  this.menu
+);
+
+    this.controllerCalibrationWizard = new ControllerCalibrationWizard(
   this.input,
   this.menu
 );
@@ -543,7 +596,7 @@ if (mobileButton) {
 
   if (mode === "manual" && !this.input.isManualCapable()) {
     this.drivingStatusElement.textContent =
-      "Enable your V99 profile or touch controls before selecting Realistic Prototype.";
+      "Enable your V99 profile, a manual-capable controller profile, or touch controls before selecting Realistic Prototype.";
     return;
   }
 

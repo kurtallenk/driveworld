@@ -2,25 +2,22 @@
 // EnemyWorld -- the single authoritative source of truth for every enemy
 // in the game (requirement #6).
 //
-// This is a server-side port of the local simulation that used to live
-// entirely in src/turret/TargetSystem.js + src/turret/Target.js. The big
-// difference: this runs ONCE, on the server, for every connected player at
-// once -- not once per client -- so every player necessarily sees the same
-// enemy IDs, positions, HP, and deaths (requirement #5). Clients no longer
-// decide any of this themselves; they only render whatever this class
-// reports (see TargetSystem.applyServerState on the client).
+// MECHANICAL ENEMY + BOSS OVERHAUL: enemies are now ground-based melee
+// mechanical units (see src/turret/Target.js for the client-side/offline
+// mirror of this exact state machine, and src/turret/TurretConfig.js's
+// ENEMY_CONFIG for every tunable both sides read). The boss additionally
+// has a rocket-launcher special attack with a server-locked telegraph
+// position, broadcast to every client so the red warning circle is
+// perfectly in sync (requirement #5/#6).
 //
-// Shares its tuning (HP, damage, fire rate, spawn distances, ...) with the
-// offline/local client simulation via TurretConfig.js's ENEMY_CONFIG --
-// there is exactly one place these numbers live, not one per system (see
-// requirement #4/#13).
-//
-// Shares its terrain-height / road-surface classification with the client
-// renderer via WorldGeometry.js, so a spawn point valid on the server is
-// guaranteed to be "on grass" for the exact terrain every client draws.
+// This runs ONCE, on the server, for every connected player at once -- not
+// once per client -- so every player necessarily sees the same enemy IDs,
+// positions, HP, states, and deaths. Clients only render whatever this
+// reports (see Target.applyNetworkState on the client).
 // ---------------------------------------------------------------------------
 
 import { heightAt, surfaceAt, clamp } from "../src/world/WorldGeometry.js";
+import { stepAngle } from "../src/turret/TurretMath.js";
 import { ENEMY_CONFIG, TARGET_CONFIG } from "../src/turret/TurretConfig.js";
 
 const SPAWN_ATTEMPTS = 100;
@@ -37,14 +34,16 @@ const SAFE_ZONE_RADIUS = ENEMY_CONFIG.spawn?.protectedSpawnRadius ?? 30;
 
 // How long a dead enemy stays in the broadcast list (with alive:false)
 // before being fully removed -- gives every client one guaranteed frame to
-// play the death effect before the id disappears (see
+// play the death animation before the id disappears (see
 // Target.js#applyNetworkState / TargetSystem.applyServerState).
-const CORPSE_LINGER_SECONDS = 0.5;
+const CORPSE_LINGER_SECONDS = 1.1;
 
 const AI_STATE = {
   IDLE: "idle",
-  ALERT: "alert",
-  ATTACKING: "attacking"
+  CHASE: "chase",
+  ATTACK: "attack",
+  RETURN: "return",
+  ROCKET: "rocket"
 };
 
 export class EnemyWorld {
@@ -56,18 +55,12 @@ export class EnemyWorld {
     this.nextNormalIndex = 1;
     this.nextBossIndex = 1;
 
-    // Deterministic seed -- no longer needs to match anything client-side
-    // (clients just render whatever this produces), kept deterministic
-    // purely so a given server run's enemy placement is reproducible for
-    // debugging.
+    // Deterministic seed -- clients just render whatever this produces, so
+    // this only needs to be reproducible for this server run's own
+    // debugging, not matched against any client-side seed.
     this.seed = 908070;
 
     // Set once by server.js right after construction (see that file).
-    // Kept as plain instance properties -- rather than re-passed as
-    // update() arguments every tick -- so applyDamage() (called directly
-    // from the "turretHit" message handler, not from update()) can also
-    // reach onEnemyKilled without a timing dependency on update() having
-    // run at least once first.
     this.onPlayerDamage = null; // (playerId, amount, enemyId) => {}
     this.onEnemyKilled = null; // (killerPlayerId, enemy) => {}
   }
@@ -82,19 +75,13 @@ export class EnemyWorld {
   }
 
   // -------------------------------------------------------------------------
-  // FIND SPAWN POSITION
-  // -------------------------------------------------------------------------
-  // Same set of constraints TargetSystem.findSpawnPosition used to enforce
-  // client-side, now enforced once, authoritatively, for every player:
+  // FIND SPAWN POSITION -- unchanged constraints from before the overhaul
+  // (see brief's original spec, still valid for ground-based units):
   //   1. Inside the world boundary.
   //   2. Outside the safe zone around the fixed player spawn point.
-  //   3. Far enough from the original player spawn (requirement #3).
-  //   4. Far enough from every currently connected, alive player
-  //      (requirement #3's "avoid spawning directly beside players" --
-  //      checked against ALL players, not just one, since this is now
-  //      multiplayer).
-  //   5. Far enough from every other currently-alive enemy (avoids one
-  //      giant cluster -- requirement #3).
+  //   3. Far enough from the original player spawn.
+  //   4. Far enough from every currently connected, alive player.
+  //   5. Far enough from every other currently-alive enemy.
   //   6. On grass.
   // -------------------------------------------------------------------------
   findSpawnPosition(players, minDistance, maxDistance, minimumDistanceFromPlayerSpawn) {
@@ -102,9 +89,6 @@ export class EnemyWorld {
       p => p.combat && !p.combat.dead
     );
 
-    // Prefer scattering around a random alive player (keeps enemies spread
-    // near where the action is) but fall back to the fixed spawn point when
-    // nobody is connected/alive yet.
     const anchor = alivePlayers.length > 0
       ? alivePlayers[Math.floor(this.random() * alivePlayers.length)]
       : null;
@@ -121,9 +105,7 @@ export class EnemyWorld {
       const z = centerZ + Math.sin(angle) * distance;
 
       if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
-
       if (this.distanceFromPlayerSpawn(x, z) < SAFE_ZONE_RADIUS) continue;
-
       if (this.distanceFromPlayerSpawn(x, z) < minimumDistanceFromPlayerSpawn) continue;
 
       const tooCloseToAPlayer = alivePlayers.some(p => {
@@ -158,23 +140,10 @@ export class EnemyWorld {
 
     if (!position) return;
 
+    const stats = ENEMY_CONFIG.normal;
     const id = `enemy_${String(this.nextNormalIndex++).padStart(3, "0")}`;
 
-    this.enemies.set(id, {
-      id,
-      kind: "normal",
-      x: position.x,
-      y: position.y,
-      z: position.z,
-      hp: ENEMY_CONFIG.normal.maxHealth,
-      maxHp: ENEMY_CONFIG.normal.maxHealth,
-      alive: true,
-      aiState: AI_STATE.IDLE,
-      targetPlayerId: null,
-      attackCooldown: 0,
-      fireSeq: 0,
-      corpseTimer: 0
-    });
+    this.enemies.set(id, this._makeEnemy(id, "normal", position, stats));
   }
 
   spawnBoss(players) {
@@ -187,38 +156,61 @@ export class EnemyWorld {
 
     if (!position) return;
 
+    const stats = ENEMY_CONFIG.boss;
     const id = `boss_${String(this.nextBossIndex++).padStart(3, "0")}`;
 
-    this.enemies.set(id, {
-      id,
-      kind: "boss",
-      x: position.x,
-      y: position.y,
-      z: position.z,
-      hp: ENEMY_CONFIG.boss.maxHealth,
-      maxHp: ENEMY_CONFIG.boss.maxHealth,
-      alive: true,
-      aiState: AI_STATE.IDLE,
-      targetPlayerId: null,
-      attackCooldown: 0,
-      bossPhase: "cooldown",
-      telegraphTimer: 0,
-      burstShotsFired: 0,
-      burstTimer: 0,
-      fireSeq: 0,
-      corpseTimer: 0
-    });
-
+    const enemy = this._makeEnemy(id, "boss", position, stats);
+    enemy.rocketCooldownTimer = stats.rocketCooldown * 0.4; // brief grace period after spawn
+    this.enemies.set(id, enemy);
     this.bossActive = true;
   }
 
+  _makeEnemy(id, kind, position, stats) {
+    return {
+      id,
+      kind,
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      spawnX: position.x,
+      spawnZ: position.z,
+      facingYaw: 0,
+      hp: stats.maxHealth,
+      maxHp: stats.maxHealth,
+      alive: true,
+
+      aiState: AI_STATE.IDLE,
+      targetPlayerId: null,
+      aggroPlayerId: null,
+
+      attackPhase: null,
+      attackPhaseTimer: 0,
+      attackCooldownTimer: 0,
+
+      idleRoamX: null,
+      idleRoamZ: null,
+      idlePauseTimer: stats.idlePauseMin + this.random() * (stats.idlePauseMax - stats.idlePauseMin),
+      moving: false,
+      meleeFireSeq: 0,
+
+      // Boss-only rocket fields -- harmless no-ops for normal enemies.
+      rocketPhase: null,
+      rocketPhaseTimer: 0,
+      rocketCooldownTimer: 0,
+      rocketTargetX: null,
+      rocketTargetY: null,
+      rocketTargetZ: null,
+      rocketFireSeq: 0,
+      telegraph: false,
+      telegraphProgress: 0,
+
+      corpseTimer: 0
+    };
+  }
+
   // -------------------------------------------------------------------------
-  // NEAREST ALIVE, TARGETABLE PLAYER
-  // -------------------------------------------------------------------------
-  // A dead player is completely invisible to enemy AI (requirement #2):
-  // never selected as a new target, and -- because this is re-evaluated
-  // every tick -- an enemy already attacking a player who dies mid-attack
-  // drops them immediately on the very next tick.
+  // NEAREST ALIVE, TARGETABLE PLAYER -- a dead player is invisible to
+  // enemy AI: never selected as a new target.
   // -------------------------------------------------------------------------
   findNearestPlayer(enemy, players) {
     let best = null;
@@ -241,11 +233,32 @@ export class EnemyWorld {
   }
 
   // -------------------------------------------------------------------------
-  // UPDATE -- one authoritative simulation tick.
+  // TARGET SELECTION -- prefers a live "aggro" lock (the player who most
+  // recently damaged this enemy -- see applyDamage()) over a fresh nearest-
+  // player scan, so an attacking player isn't randomly dropped mid-chase
+  // just because another player happens to be a little closer this tick
+  // (brief's "TARGETING LOGIC": no random switching every frame).
   // -------------------------------------------------------------------------
-  // `players`: the server's live `players` Map (id -> { state, combat, ... }).
-  // Damage/kill callbacks are read from this.onPlayerDamage/onEnemyKilled
-  // (set once by server.js -- see the constructor comment above).
+  findTargetPlayer(enemy, players, detectionRange) {
+    if (enemy.aggroPlayerId) {
+      const player = players.get(enemy.aggroPlayerId);
+      const pos = player?.state?.position;
+
+      if (player?.combat && !player.combat.dead && pos) {
+        return { player, distance: Math.hypot(enemy.x - pos[0], enemy.z - pos[2]) };
+      }
+
+      // Attacker died/disconnected -- the lock is no longer valid.
+      enemy.aggroPlayerId = null;
+    }
+
+    const nearest = this.findNearestPlayer(enemy, players);
+    if (nearest && nearest.distance <= detectionRange) return nearest;
+    return null;
+  }
+
+  // -------------------------------------------------------------------------
+  // UPDATE -- one authoritative simulation tick.
   // -------------------------------------------------------------------------
   update(dt, players) {
     for (const [id, enemy] of this.enemies) {
@@ -255,54 +268,80 @@ export class EnemyWorld {
         continue;
       }
 
-      const nearest = this.findNearestPlayer(enemy, players);
-      const detectionRange = enemy.kind === "boss"
-        ? ENEMY_CONFIG.boss.detectionRange
-        : ENEMY_CONFIG.normal.detectionRange;
-      const attackRange = enemy.kind === "boss"
-        ? ENEMY_CONFIG.boss.attackRange
-        : ENEMY_CONFIG.normal.attackRange;
+      const stats = enemy.kind === "boss" ? ENEMY_CONFIG.boss : ENEMY_CONFIG.normal;
+      const found = this.findTargetPlayer(enemy, players, stats.detectionRange);
+      const targetPlayer = found?.player ?? null;
+      const distanceToTarget = found?.distance ?? Infinity;
+      enemy.targetPlayerId = targetPlayer?.id ?? null;
 
-      const distance = nearest && nearest.distance <= detectionRange * 1.15
-        ? nearest.distance
-        : Infinity;
+      const distanceFromSpawn = Math.hypot(enemy.x - enemy.spawnX, enemy.z - enemy.spawnZ);
 
-      if (enemy.aiState !== AI_STATE.ATTACKING) {
-        enemy.aiState = nearest && nearest.distance <= detectionRange
-          ? AI_STATE.ALERT
-          : AI_STATE.IDLE;
-      } else if (distance > detectionRange * 1.15 || !nearest) {
-        enemy.aiState = AI_STATE.IDLE;
-        this.resetAttackPhase(enemy);
-      }
-
-      enemy.targetPlayerId =
-        enemy.aiState === AI_STATE.IDLE ? null : nearest?.player.id ?? null;
-
-      if (enemy.aiState === AI_STATE.ALERT && nearest && nearest.distance <= attackRange) {
-        enemy.aiState = AI_STATE.ATTACKING;
-      } else if (
-        enemy.aiState === AI_STATE.ATTACKING &&
-        (!nearest || nearest.distance > attackRange * 1.2)
-      ) {
-        enemy.aiState = AI_STATE.ALERT;
-        this.resetAttackPhase(enemy);
-      }
-
-      if (enemy.aiState === AI_STATE.ATTACKING && nearest) {
-        if (enemy.kind === "boss") {
-          this.updateBossAttack(dt, enemy, nearest.player);
-        } else {
-          this.updateNormalAttack(dt, enemy, nearest.player);
+      // ---- state transitions -------------------------------------------
+      if (enemy.aiState === AI_STATE.IDLE) {
+        if (targetPlayer) enemy.aiState = AI_STATE.CHASE;
+      } else if (enemy.aiState === AI_STATE.CHASE) {
+        if (distanceFromSpawn > stats.leashRadius) {
+          enemy.aiState = AI_STATE.RETURN;
+          enemy.aggroPlayerId = null;
+        } else if (!targetPlayer) {
+          enemy.aiState = AI_STATE.IDLE;
+        } else if (enemy.attackCooldownTimer <= 0 && distanceToTarget <= stats.attackRange) {
+          enemy.aiState = AI_STATE.ATTACK;
+          enemy.attackPhase = "windup";
+          enemy.attackPhaseTimer = 0;
+        } else if (
+          enemy.kind === "boss" &&
+          enemy.rocketCooldownTimer <= 0 &&
+          distanceToTarget > stats.rocketMinRange &&
+          distanceToTarget <= stats.rocketMaxRange
+        ) {
+          enemy.aiState = AI_STATE.ROCKET;
+          enemy.rocketPhase = "telegraph";
+          enemy.rocketPhaseTimer = 0;
+          const pos = targetPlayer.state.position;
+          // Lock target position NOW -- see Target.js's matching comment
+          // for why (Option A: fair, unambiguous 2-second warning).
+          enemy.rocketTargetX = pos[0];
+          enemy.rocketTargetZ = pos[2];
+          enemy.rocketTargetY = heightAt(pos[0], pos[2]);
         }
-      } else {
-        enemy.telegraph = false;
+      } else if (enemy.aiState === AI_STATE.RETURN) {
+        if (distanceFromSpawn < 1.5) {
+          enemy.aiState = AI_STATE.IDLE;
+        } else if (targetPlayer && distanceToTarget <= stats.attackRange) {
+          enemy.aiState = AI_STATE.CHASE;
+        }
+      }
+
+      if (enemy.attackCooldownTimer > 0) enemy.attackCooldownTimer -= dt;
+      if (enemy.kind === "boss" && enemy.rocketCooldownTimer > 0) enemy.rocketCooldownTimer -= dt;
+
+      enemy.moving = false;
+
+      // ---- per-state behavior --------------------------------------------
+      if (enemy.aiState === AI_STATE.IDLE) {
+        this.updateIdleRoam(dt, enemy, stats);
+      } else if (enemy.aiState === AI_STATE.RETURN) {
+        this.faceToward(enemy, enemy.spawnX, enemy.spawnZ, dt, stats.turnSpeed);
+        this.moveToward(enemy, enemy.spawnX, enemy.spawnZ, stats.moveSpeed, dt);
+        enemy.moving = true;
+      } else if (enemy.aiState === AI_STATE.CHASE && targetPlayer) {
+        const pos = targetPlayer.state.position;
+        this.faceToward(enemy, pos[0], pos[2], dt, stats.turnSpeed);
+        this.moveToward(enemy, pos[0], pos[2], stats.chaseSpeed, dt);
+        enemy.moving = true;
+      } else if (enemy.aiState === AI_STATE.ATTACK) {
+        if (targetPlayer) {
+          const pos = targetPlayer.state.position;
+          this.faceToward(enemy, pos[0], pos[2], dt, stats.turnSpeed);
+        }
+        this.updateAttackPhase(dt, enemy, stats, targetPlayer);
+      } else if (enemy.aiState === AI_STATE.ROCKET) {
+        this.updateRocket(dt, enemy, stats, players);
       }
     }
 
-    // ---------------------------------------------------------------------
-    // RESPAWN NORMAL ENEMIES
-    // ---------------------------------------------------------------------
+    // ---- respawn normal enemies -----------------------------------------
     for (let i = this.respawnTimers.length - 1; i >= 0; i--) {
       this.respawnTimers[i] -= dt;
       if (this.respawnTimers[i] <= 0) {
@@ -325,73 +364,168 @@ export class EnemyWorld {
         this.spawnBoss(players);
       }
     }
+  }
 
+  // -------------------------------------------------------------------------
+  // IDLE ROAM -- wander near spawn, never past idleRadius (brief's "IDLE
+  // BEHAVIOR" / "SPAWN POINT BEHAVIOR").
+  // -------------------------------------------------------------------------
+  updateIdleRoam(dt, enemy, stats) {
+    if (enemy.idleRoamX === null) {
+      if (enemy.idlePauseTimer > 0) {
+        enemy.idlePauseTimer -= dt;
+        return;
+      }
+      const angle = this.random() * Math.PI * 2;
+      const dist = this.random() * stats.idleRadius;
+      enemy.idleRoamX = enemy.spawnX + Math.cos(angle) * dist;
+      enemy.idleRoamZ = enemy.spawnZ + Math.sin(angle) * dist;
+    }
+
+    this.faceToward(enemy, enemy.idleRoamX, enemy.idleRoamZ, dt, stats.turnSpeed);
+    const step = this.moveToward(enemy, enemy.idleRoamX, enemy.idleRoamZ, stats.moveSpeed, dt);
+    enemy.moving = step > 0;
+
+    const dist = Math.hypot(enemy.idleRoamX - enemy.x, enemy.idleRoamZ - enemy.z);
+    if (dist < 0.15 || step === 0) {
+      enemy.idleRoamX = null;
+      enemy.idleRoamZ = null;
+      enemy.idlePauseTimer = stats.idlePauseMin + this.random() * (stats.idlePauseMax - stats.idlePauseMin);
+    }
+  }
+
+  faceToward(enemy, tx, tz, dt, turnSpeed) {
+    const dx = tx - enemy.x;
+    const dz = tz - enemy.z;
+    if (Math.abs(dx) < 1e-4 && Math.abs(dz) < 1e-4) return;
+    const desiredYaw = Math.atan2(dx, dz);
+    enemy.facingYaw = stepAngle(enemy.facingYaw, desiredYaw, dt * turnSpeed);
+  }
+
+  moveToward(enemy, tx, tz, speed, dt) {
+    const dx = tx - enemy.x;
+    const dz = tz - enemy.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.05) return 0;
+    const step = Math.min(dist, speed * dt);
+    enemy.x += (dx / dist) * step;
+    enemy.z += (dz / dist) * step;
+    enemy.y = heightAt(enemy.x, enemy.z);
+    return step;
+  }
+
+  // -------------------------------------------------------------------------
+  // MELEE ATTACK PHASE MACHINE -- shared shape for grunt + boss melee.
+  // Damage is applied exactly once, at the instant STRIKE begins.
+  // -------------------------------------------------------------------------
+  updateAttackPhase(dt, enemy, stats, targetPlayer) {
+    enemy.attackPhaseTimer += dt;
+
+    if (enemy.attackPhase === "windup") {
+      if (enemy.attackPhaseTimer >= stats.windupDuration) {
+        enemy.attackPhase = "strike";
+        enemy.attackPhaseTimer = 0;
+        enemy.meleeFireSeq = (enemy.meleeFireSeq + 1) % 65536;
+
+        // Re-check range AT the moment of impact, not just at windup
+        // start -- a player who backs off during the windup should be
+        // able to actually dodge the hit instead of it being guaranteed
+        // the instant windup began. Small leeway keeps the strike from
+        // feeling unfair on ordinary lag/frame-timing jitter.
+        if (targetPlayer) {
+          const pos = targetPlayer.state.position;
+          const hitDist = Math.hypot(pos[0] - enemy.x, pos[2] - enemy.z);
+          if (hitDist <= stats.attackRange * 1.2) {
+            this.onPlayerDamage?.(targetPlayer.id, stats.attackDamage, enemy.id);
+          }
+        }
+      }
+    } else if (enemy.attackPhase === "strike") {
+      if (enemy.attackPhaseTimer >= stats.strikeDuration) {
+        enemy.attackPhase = "recovery";
+        enemy.attackPhaseTimer = 0;
+      }
+    } else if (enemy.attackPhase === "recovery") {
+      if (enemy.attackPhaseTimer >= stats.recoveryDuration) {
+        enemy.attackPhase = null;
+        enemy.attackPhaseTimer = 0;
+        enemy.attackCooldownTimer = stats.attackCooldown;
+        enemy.aiState = AI_STATE.CHASE;
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // ROCKET SPECIAL ATTACK (boss only) -- telegraph -> launch -> travel ->
+  // impact, per the brief's "ROCKET LAUNCH SEQUENCE". The telegraph fields
+  // (telegraph/telegraphProgress/rocketTargetX/Y/Z) are broadcast every
+  // tick via serialize() so every client draws the exact same red circle
+  // at the exact same spot for the exact same countdown.
+  // -------------------------------------------------------------------------
+  updateRocket(dt, enemy, stats, players) {
+    enemy.rocketPhaseTimer += dt;
+
+    if (enemy.rocketPhase === "telegraph") {
+      enemy.telegraph = true;
+      enemy.telegraphProgress = clamp(enemy.rocketPhaseTimer / stats.rocketWarningDuration, 0, 1);
+
+      if (enemy.rocketPhaseTimer >= stats.rocketWarningDuration) {
+        enemy.rocketPhase = "launching";
+        enemy.rocketPhaseTimer = 0;
+        enemy.telegraph = false;
+        enemy.rocketFireSeq = (enemy.rocketFireSeq + 1) % 65536;
+      }
+      return;
+    }
+
+    if (enemy.rocketPhase === "launching") {
+      const totalDist = Math.hypot(enemy.rocketTargetX - enemy.x, enemy.rocketTargetZ - enemy.z);
+      const travelTime = Math.max(0.15, totalDist / stats.rocketTravelSpeed);
+
+      if (enemy.rocketPhaseTimer >= travelTime) {
+        this.resolveRocketImpact(enemy, stats, players);
+      }
+      return;
+    }
+  }
+
+  resolveRocketImpact(enemy, stats, players) {
+    for (const player of players.values()) {
+      if (!player.combat || player.combat.dead) continue;
+      const pos = player.state?.position;
+      if (!pos) continue;
+
+      const distance = Math.hypot(pos[0] - enemy.rocketTargetX, pos[2] - enemy.rocketTargetZ);
+      if (distance <= stats.rocketRadius) {
+        this.onPlayerDamage?.(player.id, stats.rocketDamage, enemy.id);
+      }
+    }
+
+    enemy.rocketPhase = null;
+    enemy.rocketPhaseTimer = 0;
+    enemy.rocketCooldownTimer = stats.rocketCooldown;
+    enemy.aiState = AI_STATE.CHASE;
   }
 
   resetAttackPhase(enemy) {
-    enemy.attackCooldown = 0;
+    enemy.attackPhase = null;
+    enemy.attackPhaseTimer = 0;
+    enemy.attackCooldownTimer = 0;
     enemy.telegraph = false;
-    if (enemy.kind === "boss") enemy.bossPhase = "cooldown";
-  }
-
-  updateNormalAttack(dt, enemy, targetPlayer) {
-    enemy.attackCooldown = Math.max(0, enemy.attackCooldown - dt);
-    if (enemy.attackCooldown > 0) return;
-
-    enemy.attackCooldown = ENEMY_CONFIG.normal.fireRate;
-    this.fire(enemy, targetPlayer, ENEMY_CONFIG.normal.attackDamage);
-  }
-
-  updateBossAttack(dt, enemy, targetPlayer) {
-    const cfg = ENEMY_CONFIG.boss;
-
-    if (enemy.bossPhase === "cooldown") {
-      enemy.telegraph = false;
-      enemy.attackCooldown = Math.max(0, enemy.attackCooldown - dt);
-      if (enemy.attackCooldown <= 0) {
-        enemy.bossPhase = "telegraph";
-        enemy.telegraphTimer = cfg.telegraphDuration;
-        enemy.telegraph = true;
-      }
-      return;
-    }
-
-    if (enemy.bossPhase === "telegraph") {
-      enemy.telegraphTimer -= dt;
-      enemy.telegraphProgress = clamp(1 - enemy.telegraphTimer / cfg.telegraphDuration, 0, 1);
-
-      if (enemy.telegraphTimer <= 0) {
-        enemy.bossPhase = "firing";
-        enemy.burstShotsFired = 0;
-        enemy.burstTimer = 0;
-        enemy.telegraph = false;
-      }
-      return;
-    }
-
-    // firing
-    enemy.burstTimer -= dt;
-    if (enemy.burstTimer <= 0 && enemy.burstShotsFired < cfg.burstCount) {
-      enemy.burstTimer = cfg.burstInterval;
-      enemy.burstShotsFired += 1;
-      this.fire(enemy, targetPlayer, cfg.burstDamagePerHit);
-    }
-
-    if (enemy.burstShotsFired >= cfg.burstCount) {
-      enemy.bossPhase = "cooldown";
-      enemy.attackCooldown = cfg.attackCooldown;
-    }
-  }
-
-  fire(enemy, targetPlayer, damage) {
-    enemy.fireSeq = (enemy.fireSeq + 1) % 65536;
-    this.onPlayerDamage?.(targetPlayer.id, damage, enemy.id);
+    enemy.rocketPhase = null;
+    enemy.rocketPhaseTimer = 0;
   }
 
   // -------------------------------------------------------------------------
-  // APPLY DAMAGE (from a player's turret)
+  // APPLY DAMAGE (from a player's weapon)
   // -------------------------------------------------------------------------
-  applyDamage(enemyId, amount, killerPlayerId) {
+  // DAMAGE-TRIGGERED AGGRO (brief requirement): the attacking player is
+  // immediately locked as this enemy's target, regardless of current
+  // distance/detection range, and an IDLE/RETURN enemy immediately starts
+  // chasing. Centralized here -- the single place damage is ever applied --
+  // so no individual weapon needs its own aggro logic.
+  // -------------------------------------------------------------------------
+  applyDamage(enemyId, amount, attackerPlayerId) {
     const enemy = this.enemies.get(enemyId);
     if (!enemy || !enemy.alive || !Number.isFinite(amount) || amount <= 0) {
       return false;
@@ -399,10 +533,19 @@ export class EnemyWorld {
 
     enemy.hp = Math.max(0, enemy.hp - amount);
 
+    if (attackerPlayerId) {
+      enemy.aggroPlayerId = attackerPlayerId;
+      if (enemy.aiState === AI_STATE.IDLE || enemy.aiState === AI_STATE.RETURN) {
+        enemy.aiState = AI_STATE.CHASE;
+      }
+    }
+
     if (enemy.hp <= 0) {
       enemy.alive = false;
       enemy.corpseTimer = CORPSE_LINGER_SECONDS;
       enemy.targetPlayerId = null;
+      enemy.aggroPlayerId = null;
+      this.resetAttackPhase(enemy);
 
       if (enemy.kind === "boss") {
         this.bossActive = false;
@@ -411,7 +554,7 @@ export class EnemyWorld {
         this.respawnTimers.push(TARGET_CONFIG.respawnDelay);
       }
 
-      this.onEnemyKilled?.(killerPlayerId, enemy);
+      this.onEnemyKilled?.(attackerPlayerId, enemy);
       return true;
     }
 
@@ -422,29 +565,26 @@ export class EnemyWorld {
   // SERIALIZE -- what gets sent to clients (welcome + periodic "enemies").
   // -------------------------------------------------------------------------
   serialize(players) {
-    return Array.from(this.enemies.values()).map(enemy => {
-      const targetPlayer = enemy.targetPlayerId
-        ? players.get(enemy.targetPlayerId)
-        : null;
-      const targetPos = targetPlayer?.state?.position;
-
-      return {
-        id: enemy.id,
-        kind: enemy.kind,
-        x: enemy.x,
-        y: enemy.y,
-        z: enemy.z,
-        hp: enemy.hp,
-        maxHp: enemy.maxHp,
-        alive: enemy.alive,
-        targetPlayerId: enemy.targetPlayerId,
-        telegraph: enemy.telegraph === true,
-        telegraphProgress: enemy.telegraphProgress ?? 0,
-        fireSeq: enemy.fireSeq,
-        tx: targetPos ? targetPos[0] : undefined,
-        ty: targetPos ? targetPos[1] : undefined,
-        tz: targetPos ? targetPos[2] : undefined
-      };
-    });
+    return Array.from(this.enemies.values()).map(enemy => ({
+      id: enemy.id,
+      kind: enemy.kind,
+      x: enemy.x,
+      y: enemy.y,
+      z: enemy.z,
+      yaw: enemy.facingYaw,
+      hp: enemy.hp,
+      maxHp: enemy.maxHp,
+      alive: enemy.alive,
+      state: enemy.aiState,
+      attackPhase: enemy.attackPhase,
+      moving: enemy.moving === true,
+      telegraph: enemy.telegraph === true,
+      telegraphProgress: enemy.telegraphProgress ?? 0,
+      rtx: enemy.rocketTargetX ?? undefined,
+      rty: enemy.rocketTargetY ?? undefined,
+      rtz: enemy.rocketTargetZ ?? undefined,
+      rocketFireSeq: enemy.rocketFireSeq ?? 0,
+      meleeFireSeq: enemy.meleeFireSeq ?? 0
+    }));
   }
 }

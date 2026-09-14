@@ -313,6 +313,15 @@
       </div>
     </section>
 
+    <button
+      id="hud-mode-toggle"
+      type="button"
+      hidden
+      aria-label="Cycle HUD visibility"
+    >
+      <span id="hud-mode-toggle-label">HUD: DEFAULT</span>
+    </button>
+
     <div id="game-notice" hidden></div>
     <div id="damage-flash" hidden></div>
 
@@ -345,6 +354,10 @@
 
   <button id="use-mobile" type="button" disabled>
     Use touch controls
+  </button>
+
+  <button id="use-controller" type="button" disabled>
+    Use calibrated controller
   </button>
 </div>
 
@@ -379,8 +392,8 @@
   Driver View: C · Look around: right-click and drag
 </p>
 
-<details class="presentation-options">
-  <summary>Camera and audio settings</summary>
+<details class="camera-options" id="camera-advanced-options">
+  <summary>Advanced camera settings</summary>
 
   <label class="presentation-setting">
     Driver FOV
@@ -421,6 +434,10 @@
       type="range" min="0.001" max="0.008" step="0.0001"
     />
   </label>
+</details>
+
+<details class="audio-options" id="audio-advanced-options">
+  <summary>Advanced audio settings</summary>
 
   <label class="presentation-setting">
     Engine volume
@@ -495,15 +512,43 @@
       <button id="close-menu" type="button">Resume · ESC</button>
     </header>
 
-    <nav class="settings-tabs" aria-label="Settings categories">
-      <button type="button" data-settings-tab="controls">Controls</button>
-      <button type="button" data-settings-tab="driving">Driving</button>
-      <button type="button" data-settings-tab="presentation">
-        Camera & Audio
-      </button>
+    <nav class="settings-tabs" role="tablist" aria-label="Settings categories">
+      <button
+        type="button"
+        role="tab"
+        id="settings-tab-controls"
+        aria-controls="settings-page-controls"
+        data-settings-tab="controls"
+      >Controls</button>
+      <button
+        type="button"
+        role="tab"
+        id="settings-tab-driving"
+        aria-controls="settings-page-driving"
+        data-settings-tab="driving"
+      >Driving</button>
+      <button
+        type="button"
+        role="tab"
+        id="settings-tab-display"
+        aria-controls="settings-page-display"
+        data-settings-tab="display"
+      >Display</button>
+      <button
+        type="button"
+        role="tab"
+        id="settings-tab-audio"
+        aria-controls="settings-page-audio"
+        data-settings-tab="audio"
+      >Audio</button>
     </nav>
 
-    <section data-settings-page="controls">
+    <section
+      id="settings-page-controls"
+      role="tabpanel"
+      aria-labelledby="settings-tab-controls"
+      data-settings-page="controls"
+    >
       <h3>Input device</h3>
       <div id="menu-controls"></div>
       <p class="settings-help">
@@ -512,7 +557,13 @@
       </p>
     </section>
 
-    <section data-settings-page="driving" hidden>
+    <section
+      id="settings-page-driving"
+      role="tabpanel"
+      aria-labelledby="settings-tab-driving"
+      data-settings-page="driving"
+      hidden
+    >
       <h3>Driving mode</h3>
       <div id="menu-driving"></div>
       <p class="settings-help">
@@ -521,12 +572,51 @@
       </p>
     </section>
 
-    <section data-settings-page="presentation" hidden>
-      <h3>Camera and audio</h3>
-      <div id="menu-presentation"></div>
+    <section
+      id="settings-page-display"
+      role="tabpanel"
+      aria-labelledby="settings-tab-display"
+      data-settings-page="display"
+      hidden
+    >
+      <h3>Camera</h3>
+      <div id="menu-display"></div>
       <p class="settings-help">
         C switches cameras. Right-click and drag in Driver View to look around.
       </p>
+      <div id="menu-display-advanced"></div>
+
+      <h3>HUD</h3>
+      <fieldset id="menu-hud" class="hud-mode-options">
+        <legend class="visually-hidden">HUD visibility</legend>
+        <label class="hud-mode-option">
+          <input type="radio" name="hud-mode" value="default" />
+          Default
+        </label>
+        <label class="hud-mode-option">
+          <input type="radio" name="hud-mode" value="simplified" />
+          Simplified
+        </label>
+        <label class="hud-mode-option">
+          <input type="radio" name="hud-mode" value="hidden" />
+          Hide all
+        </label>
+      </fieldset>
+      <p class="settings-help">
+        Also reachable in-game with the HUD button, top right.
+      </p>
+    </section>
+
+    <section
+      id="settings-page-audio"
+      role="tabpanel"
+      aria-labelledby="settings-tab-audio"
+      data-settings-page="audio"
+      hidden
+    >
+      <h3>Audio</h3>
+      <div id="menu-audio"></div>
+      <div id="menu-audio-advanced"></div>
     </section>
   </div>
 </section>

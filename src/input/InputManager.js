@@ -5,6 +5,12 @@ import {
   isV99ReadyToArm
 } from "./V99Profile.js";
 import { loadWheelCalibration } from "./WheelCalibration.js";
+import { loadControllerProfile } from "./ControllerCalibration.js";
+import {
+  matchesControllerProfile,
+  readControllerInput,
+  isControllerReadyToArm
+} from "./ControllerProfile.js";
 
 const STORAGE_KEY = "driveworld.controls.v1";
 
@@ -42,6 +48,16 @@ function identifyFamily(id) {
 export class InputManager {
   constructor() {
     this.v99Calibration = loadWheelCalibration();
+    // Unlike v99Calibration (fixed layout, only endpoints stored), a
+    // generic controller's mapping is discovered per-device by the
+    // calibration wizard — see ControllerCalibration.js/ControllerProfile.js.
+    this.controllerProfile = loadControllerProfile();
+    // Virtual sequential-shifter position for controller mode (paddle/
+    // button up-down instead of an H-pattern). Starts neutral; only ever
+    // touched while mode === "controller".
+    this.controllerGear = 0;
+    this._prevGearUpHeld = false;
+    this._prevGearDownHeld = false;
     this.keys = new Set();
     this.resetRequested = false;
     this.turretToggleRequested = false;
@@ -151,6 +167,13 @@ export class InputManager {
       ) {
         this.mode = "v99";
         this.status = "Saved V99 profile restored; waiting for device";
+      } else if (
+        saved?.version === 1 &&
+        saved.mode === "controller" &&
+        this.controllerProfile
+      ) {
+        this.mode = "controller";
+        this.status = "Saved controller profile restored; waiting for device";
       }
     } catch {
       this.storageWarning =
@@ -161,11 +184,13 @@ export class InputManager {
   savePreference() {
     try {
       // This versioned profile ID refers to the complete mapping in
-      // V99Profile.js. Future user calibration will store its parameters.
+      // V99Profile.js. Controller mode has no equivalent fixed ID — its
+      // saved profile (device signature + discovered mapping) already
+      // lives under its own storage key, loaded via controllerProfile.
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: 1,
         mode: this.mode,
-        profileId: V99_PROFILE_ID
+        profileId: this.mode === "v99" ? V99_PROFILE_ID : undefined
       }));
 
       this.storageWarning = "";
@@ -197,6 +222,7 @@ export class InputManager {
 
     this.mode = "v99";
     this.keys.clear();
+    this.controllerGear = 0;
     this.disarm();
     this.savePreference();
 
@@ -204,9 +230,43 @@ export class InputManager {
       "V99 profile selected. Center wheel, release pedals, select neutral.";
   }
 
+  // Selects a previously-calibrated generic controller (see
+  // ControllerCalibrationWizard). Requires a saved profile AND exactly
+  // one currently-connected device matching that profile's signature —
+  // same "exactly one candidate" safety convention as enableV99().
+  enableController() {
+    if (!this.controllerProfile) {
+      this.status =
+        "No controller profile saved. Calibrate a controller first.";
+      return;
+    }
+
+    const candidates = this.getGamepads()
+      .filter(pad => matchesControllerProfile(pad, this.controllerProfile));
+
+    if (candidates.length !== 1) {
+      this.status = candidates.length > 1
+        ? "Multiple matching controllers detected: device selection is required."
+        : "Calibrated controller not visible. Press a button and try again.";
+
+      return;
+    }
+
+    this.mode = "controller";
+    this.keys.clear();
+    this.controllerGear = 0;
+    this.disarm();
+    this.savePreference();
+
+    this.status = this.controllerProfile.mapping.clutch
+      ? "Controller profile selected. Center stick, release pedals, neutral gear."
+      : "Controller profile selected. Center stick, release pedals.";
+  }
+
   useKeyboard() {
     this.mode = "keyboard";
     this.keys.clear();
+    this.controllerGear = 0;
     this.shifter = null;
     this.disarm();
     this.savePreference();
@@ -217,6 +277,7 @@ export class InputManager {
   enableMobile() {
     this.mode = "mobile";
     this.keys.clear();
+    this.controllerGear = 0;
     this.disarm();
     this.mobileState = {
       steering: 0, throttle: 0, brake: 0, clutch: 0, handbrake: 0
@@ -228,9 +289,14 @@ export class InputManager {
   }
 
   // Whether the current input source can drive Manual/Simulation mode
-  // (i.e. it can provide clutch + H-shifter readings).
+  // (i.e. it can provide clutch + H-shifter/sequential-gear readings).
   isManualCapable() {
-    return this.mode === "v99" || this.mode === "mobile";
+    return (
+      this.mode === "v99" ||
+      this.mode === "mobile" ||
+      (this.mode === "controller" &&
+        Boolean(this.controllerProfile?.mapping.clutch))
+    );
   }
 
   setMobileInput(partial) {
@@ -319,6 +385,10 @@ export class InputManager {
       });
     }
 
+    if (this.mode === "controller") {
+      return this.sampleController();
+    }
+
     // Do not apply unattended gamepad input to an unfocused page.
     if (document.hidden || !document.hasFocus()) {
       this.disarm();
@@ -389,6 +459,110 @@ export class InputManager {
     });
   }
 
+  // Mirrors the v99 branch of sample() above, but against a discovered
+  // mapping instead of the fixed V99 axis layout, and with a virtual
+  // sequential gear counter (paddle/button up-down) instead of reading a
+  // physical H-shifter.
+  sampleController() {
+    if (document.hidden || !document.hasFocus()) {
+      this.disarm();
+      this.activeSource = "None — waiting";
+      this.status = "Controller paused while the page is unfocused";
+      this.shifter = null;
+      return normalizeInput();
+    }
+
+    const candidates = this.getGamepads()
+      .filter(pad => matchesControllerProfile(pad, this.controllerProfile));
+
+    if (candidates.length !== 1) {
+      this.disarm();
+      this.shifter = null;
+      this.activeSource = "None — waiting";
+      this.status = candidates.length > 1
+        ? "Multiple matching devices; controller input disabled"
+        : "Waiting for calibrated controller; controller input disabled";
+
+      return normalizeInput();
+    }
+
+    const gamepad = candidates[0];
+
+    if (this.armed && gamepad.index !== this.armedIndex) {
+      this.disarm();
+    }
+
+    const reading = readControllerInput(gamepad, this.controllerProfile);
+
+    if (!reading.valid) {
+      this.disarm();
+      this.activeSource = "None — invalid input";
+      this.status = reading.reason;
+      this.shifter = null;
+      return normalizeInput();
+    }
+
+    const manualCapable = Boolean(this.controllerProfile.mapping.clutch);
+
+    // Edge-triggered, same convention as the KeyF turret toggle above:
+    // only a fresh press advances the gear, so holding a paddle down
+    // never repeatedly shifts.
+    if (manualCapable) {
+      if (reading.gearUpHeld && !this._prevGearUpHeld) {
+        this.controllerGear = Math.min(6, this.controllerGear + 1);
+      }
+      if (reading.gearDownHeld && !this._prevGearDownHeld) {
+        this.controllerGear = Math.max(-1, this.controllerGear - 1);
+      }
+    }
+    this._prevGearUpHeld = reading.gearUpHeld;
+    this._prevGearDownHeld = reading.gearDownHeld;
+
+    this.shifter = manualCapable
+      ? {
+        type: "SEQUENTIAL",
+        detected: true,
+        valid: true,
+        gear: this.controllerGear,
+        reason: null
+      }
+      : null;
+
+    if (!this.armed) {
+      const gearForArmCheck = manualCapable ? this.controllerGear : 0;
+
+      if (!isControllerReadyToArm(reading, gearForArmCheck)) {
+        this.readySince = null;
+      } else {
+        this.readySince ??= performance.now();
+
+        if (performance.now() - this.readySince >= 500) {
+          this.armed = true;
+          this.armedIndex = gamepad.index;
+        }
+      }
+
+      if (!this.armed) {
+        this.activeSource = "None — safety check";
+        this.status = manualCapable
+          ? "Center steering, release ALL pedals, and select neutral for ½ second."
+          : "Center steering and release ALL pedals for ½ second.";
+
+        return normalizeInput();
+      }
+    }
+
+    this.activeSource = "Controller";
+    this.status = manualCapable
+      ? "Calibrated controller active · Realistic Prototype ready"
+      : "Calibrated controller active · Arcade driving";
+
+    return normalizeInput({
+      ...reading.input,
+      gear: manualCapable ? this.controllerGear : 0
+    });
+  }
+
   consumeReset() {
     const requested = this.resetRequested;
     this.resetRequested = false;
@@ -408,7 +582,9 @@ export class InputManager {
       mapping: gamepad.mapping || "non-standard",
       family: identifyFamily(gamepad.id),
       status:
-        this.mode === "v99" && matchesV99Layout(gamepad)
+        (this.mode === "v99" && matchesV99Layout(gamepad)) ||
+        (this.mode === "controller" &&
+          matchesControllerProfile(gamepad, this.controllerProfile))
           ? this.status
           : "Diagnostic only — no enabled binding",
       axes: Array.from(

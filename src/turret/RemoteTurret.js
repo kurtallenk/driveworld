@@ -6,6 +6,7 @@ import { TURRET_CONFIG, REMOTE_TURRET_ANCHOR } from "./TurretConfig.js";
 import { stepAngle, stepToward } from "./TurretMath.js";
 import { TurretEvolutionRig } from "./TurretEvolution.js";
 import { TurretArmorRig } from "./TurretArmor.js";
+import { PLAYER_MISSILE_EXPLOSION_CONFIG } from "./ExplosionEffect.js";
 
 // ---------------------------------------------------------------------------
 // The remote counterpart to Turret.js. It never scans for targets, never
@@ -89,6 +90,11 @@ export class RemoteTurret {
     this.flash = 1;
     this.evolution.onFire();
 
+    // Same source of truth Turret.js's local tryFire() uses -- so a remote
+    // player's level-10 missile reads as the same big explosion for
+    // everyone watching, not just for the shooter.
+    const weapon = this.evolution.getDamageConfig();
+
     for (const muzzle of this.evolution.getMuzzlePoints()) {
       muzzle.updateWorldMatrix(true, false);
       const origin = new THREE.Vector3();
@@ -100,7 +106,11 @@ export class RemoteTurret {
       const endpoint = origin.clone().addScaledVector(forward, VISUAL_TRACER_LENGTH);
 
       this.effects.spawnTracer(origin, endpoint);
-      this.effects.spawnImpact(endpoint);
+      if (weapon.weaponType === "missile") {
+        this.effects.spawnExplosion(endpoint, PLAYER_MISSILE_EXPLOSION_CONFIG);
+      } else {
+        this.effects.spawnImpact(endpoint);
+      }
     }
   }
 

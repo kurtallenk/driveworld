@@ -349,7 +349,8 @@ export class CameraManager {
     if (!statusElement) return;
 
     // Place beside the existing presentation status. Once SettingsMenu
-    // moves that node, move this panel into the same menu destination.
+    // moves that node, move this panel into the same menu destination
+    // (the Display tab, which also holds camera-toggle/FOV/HUD).
     const panel = document.createElement("section");
     panel.className = "presentation-options";
 
@@ -402,7 +403,7 @@ export class CameraManager {
     // has been constructed and moved the existing presentation controls.
     queueMicrotask(() => {
       const destination =
-        document.querySelector("#menu-presentation") ||
+        document.querySelector("#menu-display") ||
         statusElement.parentElement;
 
       destination?.append(panel);

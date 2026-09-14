@@ -7,53 +7,119 @@ import {
   sanitizeAnalogAxis
 } from "../input/WheelCalibration.js";
 
+// `title` is the short step headline; `text` is the fuller instruction
+// paragraph underneath it. `visual` picks the live-input bar's labels —
+// it's purely cosmetic, not a different code path per step.
 const STEPS = [
   {
+    title: "Center steering",
     text: "Center the steering wheel.",
     axis: 0,
-    target: ["steering", "center"]
+    target: ["steering", "center"],
+    visual: "bipolar"
   },
   {
+    title: "Turn left",
     text: "Turn the steering wheel fully LEFT.",
     axis: 0,
-    target: ["steering", "left"]
+    target: ["steering", "left"],
+    visual: "bipolar"
   },
   {
+    title: "Turn right",
     text: "Turn the steering wheel fully RIGHT.",
     axis: 0,
-    target: ["steering", "right"]
+    target: ["steering", "right"],
+    visual: "bipolar"
   },
   {
+    title: "Release accelerator",
     text: "Center steering and RELEASE the accelerator.",
     axis: 2,
-    target: ["pedals", "throttle", "released"]
+    target: ["pedals", "throttle", "released"],
+    visual: "pedal"
   },
   {
+    title: "Press accelerator",
     text: "Fully PRESS the accelerator. Release other pedals.",
     axis: 2,
-    target: ["pedals", "throttle", "pressed"]
+    target: ["pedals", "throttle", "pressed"],
+    visual: "pedal"
   },
   {
+    title: "Release brake",
     text: "RELEASE the brake.",
     axis: 5,
-    target: ["pedals", "brake", "released"]
+    target: ["pedals", "brake", "released"],
+    visual: "pedal"
   },
   {
+    title: "Press brake",
     text: "Fully PRESS the brake. Release other pedals.",
     axis: 5,
-    target: ["pedals", "brake", "pressed"]
+    target: ["pedals", "brake", "pressed"],
+    visual: "pedal"
   },
   {
+    title: "Release clutch",
     text: "RELEASE the clutch.",
     axis: 6,
-    target: ["pedals", "clutch", "released"]
+    target: ["pedals", "clutch", "released"],
+    visual: "pedal"
   },
   {
+    title: "Press clutch",
     text: "Fully PRESS the clutch. Release other pedals.",
     axis: 6,
-    target: ["pedals", "clutch", "pressed"]
+    target: ["pedals", "clutch", "pressed"],
+    visual: "pedal"
   }
 ];
+
+// Maps a thrown error's `.code` to plain-language copy so the player never
+// has to decode a technical message to know what to do next. `error.message`
+// (and `error.technical`, when present) is still preserved on the error
+// object itself for logging, even though the UI only shows the friendly copy.
+const ERROR_COPY = {
+  "no-device": {
+    title: "Wheel not detected.",
+    detail: "Connect your steering wheel and try again."
+  },
+  "multiple-devices": {
+    title: "Multiple compatible devices detected.",
+    detail: "Disconnect the extra device and try again."
+  },
+  "unstable": {
+    title: "Input not stable.",
+    detail: "Hold the control steady and capture again."
+  },
+  "out-of-range": {
+    title: "Input out of range.",
+    detail: "Release other pedals, make sure nothing is holding the " +
+      "control past its normal travel, then try again."
+  },
+  "device-changed": {
+    title: "Device changed.",
+    detail: "Reconnect your steering wheel and try again."
+  },
+  "interrupted": {
+    title: "Calibration paused.",
+    detail: "Reopen settings with the wheel connected and try again."
+  }
+};
+
+function friendlyError(error) {
+  const copy = ERROR_COPY[error?.code];
+
+  if (copy) return copy;
+
+  // Unrecognized errors still get plain-language copy — the raw message
+  // is for logs/devtools, not the headline the player sees.
+  return {
+    title: "Something went wrong.",
+    detail: "Try again. If this keeps happening, reopen settings."
+  };
+}
 
 export class WheelCalibrationWizard {
   constructor(input, menu) {
@@ -65,6 +131,7 @@ export class WheelCalibrationWizard {
     this.busy = false;
     this.token = 0;
     this.lastCaptureError = null;
+    this.liveFrame = null;
 
     this.element = document.createElement("section");
     this.element.className = "wheel-calibration";
@@ -87,8 +154,54 @@ export class WheelCalibrationWizard {
         </button>
       </div>
 
-      <div data-calibration="wizard" hidden>
+      <div data-calibration="device-error" class="calib-error" hidden>
+        <p data-calibration="device-error-title" class="calib-error-title">
+        </p>
+        <p data-calibration="device-error-detail"></p>
+        <div class="debug-actions">
+          <button type="button" data-calibration="device-error-retry">
+            Retry
+          </button>
+        </div>
+      </div>
+
+      <div data-calibration="wizard" class="calib-wizard" hidden>
+        <div class="calib-wizard-header">
+          <span class="calib-wizard-kicker">
+            Steering wheel calibration
+          </span>
+          <span
+            data-calibration="progress"
+            class="calib-wizard-progress"
+          ></span>
+        </div>
+
+        <div class="calib-progress-track">
+          <div
+            data-calibration="progress-fill"
+            class="calib-progress-fill"
+          ></div>
+        </div>
+
+        <h4 data-calibration="title" class="calib-wizard-title"></h4>
         <p data-calibration="instruction"></p>
+
+        <div class="calib-live" data-calibration="live">
+          <div class="calib-live-labels">
+            <span data-calibration="live-label-start"></span>
+            <span data-calibration="live-label-end"></span>
+          </div>
+          <div class="calib-live-track">
+            <div class="calib-live-center"></div>
+            <div
+              data-calibration="live-dot"
+              class="calib-live-dot"
+            ></div>
+          </div>
+          <p data-calibration="live-value" class="calib-live-value">
+            No signal
+          </p>
+        </div>
 
         <div class="debug-actions">
           <button type="button" data-calibration="capture">
@@ -97,6 +210,12 @@ export class WheelCalibrationWizard {
 
           <button type="button" data-calibration="save" hidden>
             Save calibration
+          </button>
+        </div>
+
+        <div class="debug-actions">
+          <button type="button" data-calibration="back" disabled>
+            Back
           </button>
 
           <button type="button" data-calibration="cancel">
@@ -116,10 +235,24 @@ export class WheelCalibrationWizard {
       );
 
     this.panel = get("wizard");
+    this.progress = get("progress");
+    this.progressFill = get("progress-fill");
+    this.titleEl = get("title");
     this.instruction = get("instruction");
     this.status = get("status");
     this.captureButton = get("capture");
     this.saveButton = get("save");
+    this.backButton = get("back");
+
+    this.liveEl = get("live");
+    this.liveLabelStart = get("live-label-start");
+    this.liveLabelEnd = get("live-label-end");
+    this.liveDot = get("live-dot");
+    this.liveValue = get("live-value");
+
+    this.deviceError = get("device-error");
+    this.deviceErrorTitle = get("device-error-title");
+    this.deviceErrorDetail = get("device-error-detail");
 
     get("begin").addEventListener("click", () => {
       this.begin();
@@ -129,8 +262,16 @@ export class WheelCalibrationWizard {
       this.restoreDefaults();
     });
 
+    get("device-error-retry").addEventListener("click", () => {
+      this.begin();
+    });
+
     get("cancel").addEventListener("click", () => {
       this.cancel();
+    });
+
+    this.backButton.addEventListener("click", () => {
+      this.back();
     });
 
     this.captureButton.addEventListener("click", () => {
@@ -155,27 +296,49 @@ export class WheelCalibrationWizard {
     });
   }
 
+  // Throws a tagged error so callers can show plain-language copy
+  // (see ERROR_COPY) instead of this raw message. Detection logic itself
+  // (matchesV99Layout, "exactly one device") is unchanged.
   selectedPad() {
     const candidates = this.input.getGamepads()
       .filter(matchesV99Layout);
 
-    if (candidates.length !== 1) {
-      throw new Error(
-        "Exactly one matching V99 must be connected. " +
-        "Press a wheel button if needed."
+    if (candidates.length === 0) {
+      const error = new Error(
+        "No matching V99 wheel detected. Press a wheel button if needed."
       );
+      error.code = "no-device";
+      throw error;
+    }
+
+    if (candidates.length > 1) {
+      const error = new Error(
+        "More than one matching V99 device is connected."
+      );
+      error.code = "multiple-devices";
+      throw error;
     }
 
     return candidates[0];
   }
 
+  showDeviceError(error) {
+    const { title, detail } = friendlyError(error);
+
+    this.deviceErrorTitle.textContent = title;
+    this.deviceErrorDetail.textContent = detail;
+    this.deviceError.hidden = false;
+  }
+
   begin() {
     if (!this.menu.isOpen) return;
+
+    this.deviceError.hidden = true;
 
     try {
       this.selectedPad();
     } catch (error) {
-      this.status.textContent = error.message;
+      this.showDeviceError(error);
       return;
     }
 
@@ -194,6 +357,7 @@ export class WheelCalibrationWizard {
       "Hold each requested position steady, then click Capture.";
 
     this.showStep();
+    this.startLiveLoop();
   }
 
   showStep() {
@@ -203,10 +367,84 @@ export class WheelCalibrationWizard {
     this.captureButton.hidden = finished;
     this.captureButton.disabled = false;
     this.saveButton.hidden = !finished;
+    this.backButton.disabled = this.stepIndex === 0;
 
-    this.instruction.textContent = finished
-      ? "All positions captured. Release pedals and center steering."
-      : `Step ${this.stepIndex + 1}/${STEPS.length}: ${step.text}`;
+    this.progress.textContent = finished
+      ? "All steps captured"
+      : `Step ${this.stepIndex + 1} of ${STEPS.length}`;
+
+    this.progressFill.style.width =
+      `${(Math.min(this.stepIndex, STEPS.length) / STEPS.length) * 100}%`;
+
+    if (finished) {
+      this.titleEl.textContent = "Ready to save";
+      this.instruction.textContent =
+        "All positions captured. Release pedals and center steering.";
+      this.liveEl.hidden = true;
+      return;
+    }
+
+    this.titleEl.textContent = step.title;
+    this.instruction.textContent = step.text;
+
+    this.liveEl.hidden = false;
+    this.liveLabelStart.textContent =
+      step.visual === "bipolar" ? "Left" : "Released";
+    this.liveLabelEnd.textContent =
+      step.visual === "bipolar" ? "Right" : "Pressed";
+  }
+
+  back() {
+    if (!this.draft || this.stepIndex === 0) return;
+
+    this.stepIndex--;
+    this.showStep();
+    this.status.textContent =
+      `Back to step ${this.stepIndex + 1}. Re-capture to overwrite it.`;
+  }
+
+  // Live raw-axis readout, independent of capture(). Reads the same
+  // gamepad axis the current step will capture, so the player can see
+  // the control respond before committing to a capture. Stops itself
+  // (rather than throwing into the UI) if the device disappears mid-read.
+  startLiveLoop() {
+    cancelAnimationFrame(this.liveFrame);
+
+    const tick = () => {
+      if (this.panel.hidden || !this.draft) return;
+
+      const step = STEPS[this.stepIndex];
+
+      if (!step) {
+        this.liveFrame = requestAnimationFrame(tick);
+        return;
+      }
+
+      try {
+        const pad = this.selectedPad();
+        const raw = sanitizeAnalogAxis(pad.axes[step.axis]);
+
+        if (raw === null) {
+          this.liveValue.textContent = "No signal";
+          this.liveDot.style.left = "50%";
+        } else {
+          const percent = ((raw + 1) / 2) * 100;
+          this.liveDot.style.left = `${percent}%`;
+          this.liveValue.textContent = raw.toFixed(2);
+        }
+      } catch {
+        this.liveValue.textContent = "No signal";
+      }
+
+      this.liveFrame = requestAnimationFrame(tick);
+    };
+
+    this.liveFrame = requestAnimationFrame(tick);
+  }
+
+  stopLiveLoop() {
+    cancelAnimationFrame(this.liveFrame);
+    this.liveFrame = null;
   }
 
   async capture() {
@@ -246,15 +484,19 @@ export class WheelCalibrationWizard {
           document.hidden ||
           !document.hasFocus()
         ) {
-          throw new Error(
+          const error = new Error(
             "Capture interrupted. Try again with the menu open."
           );
+          error.code = "interrupted";
+          throw error;
         }
 
         const pad = this.selectedPad();
 
         if (pad.index !== initialPad.index) {
-          throw new Error("Device changed during capture.");
+          const error = new Error("Device changed during capture.");
+          error.code = "device-changed";
+          throw error;
         }
 
         const rawValue = pad.axes[step.axis];
@@ -281,11 +523,13 @@ export class WheelCalibrationWizard {
 
           this.lastCaptureError = details;
 
-          throw new Error(
+          const error = new Error(
             `Axis ${step.axis} reported ${String(rawValue)}. ` +
             "Outside the permitted endpoint tolerance. " +
             `Raw axes: [${details.axes.join(", ")}]`
           );
+          error.code = "out-of-range";
+          throw error;
         }
 
         // Tiny overshoot is sanitized before averaging and saving.
@@ -296,9 +540,11 @@ export class WheelCalibrationWizard {
       const maximum = Math.max(...values);
 
       if (maximum - minimum > 0.03) {
-        throw new Error(
+        const error = new Error(
           "The control moved during capture. Hold steady and retry."
         );
+        error.code = "unstable";
+        throw error;
       }
 
       const average =
@@ -317,10 +563,14 @@ export class WheelCalibrationWizard {
       this.showStep();
 
       this.status.textContent =
-        `Captured axis ${step.axis}: ${average.toFixed(4)}`;
+        `Captured: ${average.toFixed(4)}. ` +
+        (STEPS[this.stepIndex]
+          ? "Move to the next position and capture."
+          : "All steps done — review and save below.");
     } catch (error) {
       if (token === this.token) {
-        this.status.textContent = error.message;
+        const { title, detail } = friendlyError(error);
+        this.status.textContent = `${title} ${detail}`;
       }
     } finally {
       if (token === this.token) {
@@ -365,6 +615,7 @@ export class WheelCalibrationWizard {
 
     this.draft = null;
     this.panel.hidden = true;
+    this.stopLiveLoop();
   }
 
   restoreDefaults() {
@@ -379,6 +630,7 @@ export class WheelCalibrationWizard {
     this.busy = false;
     this.draft = null;
     this.panel.hidden = true;
+    this.stopLiveLoop();
 
     this.status.textContent =
       "Calibration cancelled. Existing settings retained.";

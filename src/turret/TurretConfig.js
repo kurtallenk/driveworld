@@ -35,7 +35,11 @@ export const TARGET_CONFIG = {
   maxTargets: 10,
   minSpawnDistance: 18,
   maxSpawnDistance: 48,
-  hoverHeight: 3.2,
+  // Enemies are now ground-based mechanical units, not hovering orbs --
+  // this is the vertical offset from terrain height to the model's feet
+  // (kept as a config knob rather than always assuming exactly 0, in case
+  // a future variant needs a small ground clearance).
+  hoverHeight: 0,
   maxHealth: 60,
   respawnDelay: 4
 };
@@ -49,35 +53,80 @@ export const TARGET_CONFIG = {
 export const ENEMY_CONFIG = {
   maxEnemies: 10,
 
+  // -------------------------------------------------------------------
+  // MECHANICAL ENEMY / BOSS OVERHAUL -- single source of truth for every
+  // tunable used by the melee grunt AI (EnemyAI/EnemyCombat, both in
+  // Target.js locally and server/EnemyWorld.js authoritatively) and the
+  // boss's melee + rocket special. Nothing below is hardcoded anywhere
+  // else -- see PROJECT_PROGRESS.md's "Architecture decisions".
+  // -------------------------------------------------------------------
   normal: {
-    maxHealth: 60,
+    name: "MECHANICAL SENTINEL",
+    maxHealth: 90,
     xpReward: 25,
-    detectionRange: 45,
-    attackRange: 30,
-    attackDamage: 5,
-
-    // Seconds between shots. Deliberately slow/"modern RPG" paced rather
-    // than a fast machine-gun tick -- this is the single, authoritative
-    // cooldown value: both the local visual sim (Target.js, used offline)
-    // and the authoritative multiplayer server (server/EnemyWorld.js) read
-    // this exact number, so there is nowhere else a competing cooldown
-    // could be hardcoded.
-    fireRate: 2.6
+    detectionRange: 32, // grounded melee unit -- shorter than the old ranged 45
+    attackRange: 3.4, // melee reach
+    attackDamage: 12,
+    attackCooldown: 1.6, // seconds between melee swings once in range
+    windupDuration: 0.45, // NOTICE -> STRIKE anticipation
+    strikeDuration: 0.18, // the actual damage window
+    recoveryDuration: 0.55, // STRIKE -> back to CHASE
+    moveSpeed: 2.6, // idle roam speed, m/s
+    chaseSpeed: 5.2, // aggro chase speed, m/s
+    turnSpeed: 4.0, // rad/s facing turn rate
+    idleRadius: 9, // max distance from spawnPosition while roaming
+    idlePauseMin: 1.5, // seconds paused between idle roam legs
+    idlePauseMax: 4.0,
+    leashRadius: 45 // give up the chase and return to spawn beyond this
   },
 
   boss: {
-    maxHealth: 1000,
-    xpReward: 500,
-    detectionRange: 100,
-    attackRange: 80,
-    burstDamagePerHit: 12,
-    burstCount: 3,
-    burstInterval: 0.3, // seconds between projectiles within a burst
-    attackCooldown: 9, // seconds between bursts -- the actual gameplay pace
-    telegraphDuration: 1.4, // warning time before the burst fires
+    name: "APEX ARACHNID",
+    maxHealth: 1400,
+    xpReward: 750,
+    detectionRange: 70,
+    // Bumped from 7.5 alongside `scale` below -- the front legs' actual
+    // world-space reach grows with the model, so the melee hit-check radius
+    // needs to grow too or a visually-connecting strike would whiff. Kept
+    // just under rocketMinRange (10) so the melee/rocket range split below
+    // still behaves the same as before (attack still wins under 10, rocket
+    // still owns 10-60) -- a full proportional scale-up (~10.8) would have
+    // eaten into that band and made the boss rocket noticeably rarer.
+    attackRange: 9.0, // melee leg-strike reach
+    attackDamage: 30,
+    attackCooldown: 2.4,
+    windupDuration: 0.6,
+    strikeDuration: 0.22,
+    recoveryDuration: 0.7,
+    moveSpeed: 2.0,
+    chaseSpeed: 4.2,
+    turnSpeed: 2.4,
+    idleRadius: 14,
+    idlePauseMin: 2.0,
+    idlePauseMax: 5.0,
+    leashRadius: 130,
     respawnDelay: 60,
     initialSpawnDelay: 20, // grace period before the first boss appears
-    scale: 3.2
+    // Bumped from 3.2 -- "substantially bigger, dominates the battlefield"
+    // (see brief). Safe to scale as a single uniform multiplier because the
+    // whole model is built with its root at the ground-contact plane (see
+    // BossSpiderModel.js's header comment) and every joint/limb is
+    // positioned/animated in local space via rotations and relative
+    // offsets, not absolute world heights -- so ground contact, leg
+    // proportions, and animations all remain correct at any scale. The
+    // health bar / name label y-offset (Target.js) and rocket spawn height
+    // (Target.js's _scale()) already read this value dynamically, so they
+    // scale up automatically too.
+    scale: 4.6,
+
+    // ---- rocket launcher special attack ----
+    rocketMinRange: 10, // won't bother rocketing a target this close (melee instead)
+    rocketMaxRange: 60, // won't rocket a target farther than this -- will chase in
+    rocketDamage: 40,
+    rocketRadius: 6, // AoE splash radius at impact
+    rocketCooldown: 8, // seconds between rocket attacks
+    rocketWarningDuration: 2.0, // the required 2-second telegraph countdown
+    rocketTravelSpeed: 26 // m/s, visual/logical travel speed after launch
   },
 
   spawn: {
@@ -119,7 +168,7 @@ export const PLAYER_CONFIG = {
 };
 
 export const LEVEL_CONFIG = {
-  baseXP: 100,
+  baseXP: 1,
   curveExponent: 1.35 // xpRequired(level) = baseXP * level^curveExponent
 };
 

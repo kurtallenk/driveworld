@@ -1190,19 +1190,67 @@ pre {
   color: #c7dbf6;
 }
 
-.presentation-options {
+.presentation-options,
+.camera-options,
+.audio-options {
   margin-top: 1rem;
   padding-top: 0.75rem;
   border-top: 1px solid #ffffff24;
 }
 
-.presentation-options .presentation-setting {
+.presentation-options .presentation-setting,
+.camera-options .presentation-setting,
+.audio-options .presentation-setting {
   justify-content: space-between;
 }
 
 #settings-save-status {
   color: #7de2bf;
   font-size: 0.75rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hud-mode-options {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.hud-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.75rem;
+  color: #c7dbf6cc;
+  background: #101a2680;
+  border: 1px solid #ffffff22;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.hud-mode-option:has(input:checked) {
+  color: #eef4ff;
+  background: #1a2838a0;
+  border-color: #5fd9ff66;
+}
+
+.hud-mode-option input[type="radio"] {
+  accent-color: #5fd9ff;
 }
 
 #open-menu {
@@ -1223,6 +1271,63 @@ pre {
 #open-menu[hidden],
 #settings-menu[hidden],
 [data-settings-page][hidden] {
+  display: none;
+}
+
+/* ==========================================================================
+   HUD visibility toggle (DEFAULT / SIMPLIFIED / HIDE ALL)
+   ========================================================================== */
+
+/* Mirrors #open-menu's corner-chip treatment but sits top-right so it
+   never collides with it — and unlike #open-menu, this lives outside
+   #hud/#combat-hud entirely so [data-hud-mode="hidden"] below can hide
+   the rest of the HUD without also hiding the control that brings it
+   back. */
+#hud-mode-toggle {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  right: calc(env(safe-area-inset-right, 0px) + 1rem);
+  margin: 0;
+  z-index: 3;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #c7dbf6cc;
+  background: #101a2680;
+  border: 1px solid #ffffff22;
+  border-radius: 0.5rem;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+#hud-mode-toggle:hover {
+  background: #1a2838a0;
+  color: #eef4ff;
+}
+
+#hud-mode-toggle[hidden] { display: none; }
+
+/* SIMPLIFIED: keep speed/RPM (the gauge), gear, critical warnings, and
+   critical combat state (player HP). Drop everything else that isn't
+   needed moment-to-moment while driving. */
+body[data-hud-mode="simplified"] .dash-secondary,
+body[data-hud-mode="simplified"] .dash-engine-pill,
+body[data-hud-mode="simplified"] .dash-clutch-row,
+body[data-hud-mode="simplified"] .dash-boost-row,
+body[data-hud-mode="simplified"] #keyboard-panel,
+body[data-hud-mode="simplified"] #boss-hud,
+body[data-hud-mode="simplified"] .combat-row:has(#player-xp-fill) {
+  display: none;
+}
+
+/* HIDE ALL: no normal HUD. Temporary system notices (#game-notice,
+   damage flash, death screen) live outside #hud/#combat-hud already, so
+   they're unaffected — only the persistent driving/combat readouts and
+   the keyboard hint go away. The toggle itself lives outside #hud too,
+   so it's never swept up by this rule. */
+body[data-hud-mode="hidden"] #hud,
+body[data-hud-mode="hidden"] #combat-hud {
   display: none;
 }
 
@@ -1287,7 +1392,7 @@ pre {
   color: #edf6ff;
 }
 
-.settings-tabs button[aria-pressed="true"] {
+.settings-tabs button[aria-selected="true"] {
   background: #7de2bf;
   color: #0a241b;
 }
@@ -1339,6 +1444,133 @@ pre {
   color: #7de2bf;
   font-size: 0.85rem;
   line-height: 1.5;
+}
+
+/* ---- Step wizard ---- */
+
+.calib-wizard {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #ffffff22;
+  border-radius: 0.7rem;
+  background: #0d1620b0;
+}
+
+.calib-wizard-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.calib-wizard-kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8fb3d6;
+}
+
+.calib-wizard-progress {
+  font-size: 0.75rem;
+  color: #c7dbf6cc;
+  white-space: nowrap;
+}
+
+.calib-progress-track {
+  margin-top: 0.6rem;
+  height: 4px;
+  border-radius: 999px;
+  background: #ffffff1a;
+  overflow: hidden;
+}
+
+.calib-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #5fd9ff;
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.calib-wizard-title {
+  margin: 0.8rem 0 0.2rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #edf6ff;
+  text-transform: uppercase;
+}
+
+.calib-wizard [data-calibration="instruction"] {
+  margin-top: 0.3rem;
+}
+
+.calib-live {
+  margin: 0.9rem 0;
+}
+
+.calib-live-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8fb3d6;
+}
+
+.calib-live-track {
+  position: relative;
+  margin-top: 0.35rem;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #253b51, #16212e, #253b51);
+  border: 1px solid #ffffff22;
+}
+
+.calib-live-center {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 1px;
+  height: 16px;
+  background: #ffffff33;
+}
+
+.calib-live-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #5fd9ff;
+  box-shadow: 0 0 10px #5fd9ffaa;
+  transform: translate(-50%, -50%);
+  transition: left 0.05s linear;
+}
+
+.calib-live-value {
+  margin: 0.4rem 0 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  color: #c7dbf6cc;
+  text-align: right;
+}
+
+.calib-error {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #ff8a8a44;
+  border-radius: 0.6rem;
+  background: #2a1414b0;
+}
+
+.calib-error-title {
+  margin: 0 0 0.2rem;
+  font-weight: 700;
+  color: #ffb4b4;
 }
 .name-entry {
   display: flex;
@@ -1530,6 +1762,8 @@ pre {
 @media (prefers-reduced-motion: reduce) {
   .bg_loading { animation: none; }
   .intro-brand, .intro-main, .intro-patch { animation: none; }
+  .calib-live-dot { transition: none; }
+  .calib-progress-fill { transition: none; }
 }
 
 @media (max-width: 900px) {
@@ -2103,6 +2337,26 @@ body.mobile-controls-active .dash-engine-pill {
   background: #f5d68a40;
   color: #ffe9b8;
   box-shadow: inset 0 0 0 2px #f5d68a, 0 0 22px #f5d68a55;
+}
+
+/* --- Handbrake ----------------------------------------------------------- */
+/* Deliberately NOT part of .mc-pedals or .mc-right-cluster — it has its
+   own fixed anchor on the right edge, vertically centered, so it never
+   shares a hitbox with the pedals/turbo/turret below it and stays
+   reachable with a thumb-flick up from the pedal area. */
+
+.mc-handbrake-btn {
+  position: fixed;
+  right: calc(env(safe-area-inset-right, 0px) + 0.6rem);
+  top: 50%;
+  transform: translateY(-50%);
+  border-color: #f5745555;
+}
+
+.mc-handbrake-btn.mc-pressed {
+  background: #f5745540;
+  color: #ffd9c9;
+  box-shadow: inset 0 0 0 2px #f57455, 0 0 22px #f5745555;
 }
 
 /* --- Turret deploy button ------------------------------------------------ */

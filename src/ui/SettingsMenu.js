@@ -11,7 +11,8 @@ export class SettingsMenu {
     this.moveButtonGroup("menu-controls", [
       "enable-v99",
       "use-keyboard",
-      "use-mobile"
+      "use-mobile",
+      "use-controller"
     ]);
 
     this.moveElement("control-status", "menu-controls");
@@ -23,26 +24,35 @@ export class SettingsMenu {
 
     this.moveElement("driving-status", "menu-driving");
 
-    this.moveButtonGroup("menu-presentation", [
-      "camera-toggle",
-      "enable-audio"
-    ]);
+    // Display tab: camera controls + HUD. Audio tab: volume controls.
+    // Previously these all lived in one "Camera & Audio" page; split so
+    // each tab only has settings a player would actually look for there.
+    this.moveButtonGroup("menu-display", ["camera-toggle"]);
+    this.moveButtonGroup("menu-audio", ["enable-audio"]);
 
-    for (const id of ["master-volume", "camera-vibration"]) {
+    for (const [id, destinationId] of [
+      ["camera-vibration", "menu-display"],
+      ["master-volume", "menu-audio"]
+    ]) {
       const input = document.getElementById(id);
       const label = input?.closest("label");
 
       if (label) {
-        document.querySelector("#menu-presentation").append(label);
+        document.getElementById(destinationId).append(label);
       }
     }
 
-    this.moveElement("presentation-status", "menu-presentation");
+    this.moveElement("presentation-status", "menu-display");
 
-    const options = document.querySelector(".presentation-options");
-    if (options) {
-      options.open = true;
-      document.querySelector("#menu-presentation").append(options);
+    for (const [selector, destinationId] of [
+      [".camera-options", "menu-display-advanced"],
+      [".audio-options", "menu-audio-advanced"]
+    ]) {
+      const options = document.querySelector(selector);
+      if (options) {
+        options.open = true;
+        document.getElementById(destinationId).append(options);
+      }
     }
 
     // Remove groups left empty by moving their buttons.
@@ -56,9 +66,35 @@ export class SettingsMenu {
     this.openButton.addEventListener("click", () => this.open());
     this.closeButton.addEventListener("click", () => this.close());
 
-    document.querySelectorAll("[data-settings-tab]").forEach(button => {
+    this.tabs = Array.from(document.querySelectorAll("[data-settings-tab]"));
+
+    this.tabs.forEach(button => {
       button.addEventListener("click", () => {
         this.selectPage(button.dataset.settingsTab);
+        button.focus();
+      });
+
+      // Standard ARIA tabs keyboard pattern: arrow keys move focus AND
+      // activate (no separate "select" step), Home/End jump to the ends.
+      button.addEventListener("keydown", event => {
+        const index = this.tabs.indexOf(button);
+        let target = null;
+
+        if (event.key === "ArrowRight") {
+          target = this.tabs[(index + 1) % this.tabs.length];
+        } else if (event.key === "ArrowLeft") {
+          target = this.tabs[(index - 1 + this.tabs.length) % this.tabs.length];
+        } else if (event.key === "Home") {
+          target = this.tabs[0];
+        } else if (event.key === "End") {
+          target = this.tabs[this.tabs.length - 1];
+        } else {
+          return;
+        }
+
+        event.preventDefault();
+        this.selectPage(target.dataset.settingsTab);
+        target.focus();
       });
     });
 
@@ -118,11 +154,13 @@ export class SettingsMenu {
       page.hidden = page.dataset.settingsPage !== name;
     });
 
-    document.querySelectorAll("[data-settings-tab]").forEach(button => {
-      button.setAttribute(
-        "aria-pressed",
-        String(button.dataset.settingsTab === name)
-      );
+    this.tabs.forEach(button => {
+      const selected = button.dataset.settingsTab === name;
+      button.setAttribute("aria-selected", String(selected));
+      // Roving tabindex: only the active tab sits in the Tab order, so
+      // Tab moves straight from the tab strip into the visible panel
+      // instead of stopping on hidden tabs.
+      button.tabIndex = selected ? 0 : -1;
     });
   }
 

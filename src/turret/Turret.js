@@ -7,6 +7,7 @@ import { stepAngle, stepToward, clamp, angleDifference } from "./TurretMath.js";
 import { TurretEvolutionRig } from "./TurretEvolution.js";
 import { TurretArmorRig } from "./TurretArmor.js";
 import { getTurretEvolutionConfig } from "../gameplay/EvolutionConfig.js";
+import { PLAYER_MISSILE_EXPLOSION_CONFIG } from "./ExplosionEffect.js";
 
 const STATE = {
   UNDEPLOYED: "undeployed",
@@ -257,7 +258,19 @@ export class Turret {
         destroyed = targetSystem.applyDamage(this.target, perMountDamage);
       }
     }
-    this.effects.spawnImpact(impactPoint);
+
+    // Level-10 "Ultimate Missile System" (see EvolutionConfig.js's stage-5
+    // weaponType) gets the big layered explosion instead of the small spark
+    // burst every other stage uses -- driven by the same evolution/weapon
+    // config that's already the source of truth for damage, not a separate
+    // hardcoded level check. Fired exactly once per shot (outside the
+    // per-muzzle loop above), matching the existing single spawnImpact call
+    // this replaces -- so it can never double-trigger.
+    if (weapon.weaponType === "missile") {
+      this.effects.spawnExplosion(impactPoint, PLAYER_MISSILE_EXPLOSION_CONFIG);
+    } else {
+      this.effects.spawnImpact(impactPoint);
+    }
 
     if (destroyed) this.target = null;
 

@@ -34,10 +34,12 @@ export class MobileControls {
     this.bindPedal(this.accelEl, "throttle");
     this.bindPedal(this.brakeEl, "brake");
     this.bindPedal(this.clutchEl, "clutch");
+    this.bindPedal(this.handbrakeEl, "handbrake");
     this.bindShifter();
     this.bindTurret();
     this.bindTurbo();
     this.bindOrientation();
+    this.bindFocusLoss();
 
     this.root.hidden = true;
   }
@@ -64,12 +66,28 @@ export class MobileControls {
       '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';
     const ICON_CLUTCH =
       '<svg viewBox="0 0 24 24"><path d="M12 2 2 12l10 10 10-10L12 2z"/></svg>';
+    const ICON_HANDBRAKE =
+      '<svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5.2 3.4 9 8 10 4.6-1 8-4.8 8-10V6l-8-4z"/></svg>';
 
     this.clutchEl = this.makePedal("CLUTCH", "mc-pedal-clutch", ICON_CLUTCH);
     this.brakeEl = this.makePedal("BRAKE", "mc-pedal-brake", ICON_BRAKE);
     this.accelEl = this.makePedal("GAS", "mc-pedal-accel", ICON_ACCEL);
 
     this.pedalsEl.append(this.clutchEl, this.brakeEl, this.accelEl);
+
+    // Handbrake: a first-class control, not part of the pedal stack.
+    // Positioned independently (own fixed placement in CSS, mid-right
+    // edge) so it never shares a hitbox with the pedals or the
+    // turbo/turret cluster and can be reached without letting go of
+    // either. Feeds InputManager's existing "handbrake" axis via the
+    // same bindPedal() press/release/cancel handling the pedals use —
+    // this is not a second input pathway.
+    this.handbrakeEl = this.makePedal(
+      "HANDBRAKE", "mc-handbrake-btn", ICON_HANDBRAKE
+    );
+    this.handbrakeEl.setAttribute("role", "button");
+    this.handbrakeEl.setAttribute("aria-label", "Handbrake");
+    this.handbrakeEl.tabIndex = 0;
 
     // Turret deploy button, stacked directly above the pedal column so it
     // shares the bottom-right zone without ever overlapping a pedal's own
@@ -141,6 +159,7 @@ export class MobileControls {
     this.root.append(
       this.steeringEl,
       this.rightClusterEl,
+      this.handbrakeEl,
       this.shifterEl,
       this.orientationEl
     );
@@ -301,11 +320,35 @@ export class MobileControls {
     for (const [el, axis] of [
       [this.accelEl, "throttle"],
       [this.brakeEl, "brake"],
-      [this.clutchEl, "clutch"]
+      [this.clutchEl, "clutch"],
+      [this.handbrakeEl, "handbrake"]
     ]) {
       el.classList.remove("mc-pressed");
       this.input.setMobileInput({ [axis]: 0 });
     }
+  }
+
+  // ---- Focus loss ------------------------------------------------------
+
+  // Handbrake/pedals/turbo all use pointerdown/up pairs; if the tab is
+  // backgrounded or the page loses focus mid-press (app switch, an
+  // incoming call, pull-down notification shade) no matching pointerup
+  // ever fires. Without this, a control can stay "held" indefinitely.
+  // This mirrors setActive(false)'s cleanup, just triggered by focus
+  // loss instead of a mode switch.
+  bindFocusLoss() {
+    const releaseEverything = () => {
+      if (!this.active) return;
+
+      this.releaseAllPedals();
+      this.resetSteering();
+      this.input.setMobileTurboHeld(false);
+    };
+
+    window.addEventListener("blur", releaseEverything);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) releaseEverything();
+    });
   }
 
   // ---- Turret --------------------------------------------------------

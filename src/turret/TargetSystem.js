@@ -48,6 +48,9 @@ export class TargetSystem {
     this.roads = roads;
     this.playerHealth = playerHealth;
 
+    // Kept for backward compatibility -- the mechanical models build their
+    // own geometry/materials internally (see RobotParts.js) so these no
+    // longer carry real assets, but nothing else needs to change.
     this.assets = createSharedTargetAssets();
     this.bossAssets = createSharedBossAssets();
 
@@ -190,18 +193,14 @@ export class TargetSystem {
       let target = this.byId.get(data.id);
 
       if (!target) {
-        const assets = data.kind === "boss" ? this.bossAssets : this.assets;
-
         target = new Target(
           this.scene,
-          assets,
           new THREE.Vector3(data.x, data.y, data.z),
           data.kind
         );
 
         target.id = data.id;
         target.maxHealth = data.maxHp;
-        target.lastFireSeq = data.fireSeq ?? 0;
 
         this.byId.set(data.id, target);
         this.targets.push(target);
@@ -209,7 +208,7 @@ export class TargetSystem {
         if (data.kind === "boss") this.onBossSpawned?.(target);
       }
 
-      target.applyNetworkState(data, camera, this.effectsPool, audio);
+      target.applyNetworkState(data);
     }
 
     // Anything previously known but no longer present server-side has
@@ -450,7 +449,6 @@ export class TargetSystem {
 
     const target = new Target(
       this.scene,
-      this.assets,
       position,
       "normal"
     );
@@ -475,7 +473,6 @@ export class TargetSystem {
 
     const boss = new Target(
       this.scene,
-      this.bossAssets,
       position,
       "boss"
     );
@@ -500,7 +497,7 @@ export class TargetSystem {
     // the per-client divergence requirement #5/#6 rule out.
     if (this.networked) {
       for (const target of this.targets) {
-        target.updateCosmetic(dt, this.elapsed, camera);
+        target.updateCosmetic(dt, this.elapsed, camera, this.effectsPool);
       }
 
       this.effectsPool.update(dt);
@@ -526,7 +523,11 @@ export class TargetSystem {
 
       camera,
 
-      audio
+      audio,
+
+      // Ground-based melee movement needs to keep enemies' feet glued to
+      // terrain height while they chase/roam (see Target.js's _moveToward).
+      terrain: this.terrain
     };
 
     // -----------------------------------------------------------------------
