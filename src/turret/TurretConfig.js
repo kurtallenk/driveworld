@@ -128,8 +128,8 @@ export const LEVEL_CONFIG = {
 // lighter-weight RemoteVehicle.js body, so each gets its own anchor. Both
 // are positioned toward the rear of the roof, clear of the sunroof glass
 // panel and just ahead of the roof's trailing edge.
-export const LOCAL_TURRET_ANCHOR = { x: 0, y: 1.34, z: -0.85 };
-export const REMOTE_TURRET_ANCHOR = { x: 0, y: 1.05, z: -0.85 };
+export const LOCAL_TURRET_ANCHOR = { x: 0, y: 1.34, z: -0.65 };
+export const REMOTE_TURRET_ANCHOR = { x: 0, y: 1.34, z: -0.65 };
 
 export const TURRET_WIRE_STATES = [
   "undeployed",
