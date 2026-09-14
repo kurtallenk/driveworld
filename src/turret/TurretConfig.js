@@ -53,8 +53,8 @@ export const ENEMY_CONFIG = {
     maxHealth: 60,
     xpReward: 25,
     detectionRange: 45,
-    attackRange: 40,
-    attackDamage: 10,
+    attackRange: 30,
+    attackDamage: 5,
 
     // Seconds between shots. Deliberately slow/"modern RPG" paced rather
     // than a fast machine-gun tick -- this is the single, authoritative

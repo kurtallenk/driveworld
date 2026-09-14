@@ -5,6 +5,7 @@ import { TurretEffectsPool } from "./TurretEffects.js";
 import { TURRET_CONFIG, REMOTE_TURRET_ANCHOR } from "./TurretConfig.js";
 import { stepAngle, stepToward } from "./TurretMath.js";
 import { TurretEvolutionRig } from "./TurretEvolution.js";
+import { TurretArmorRig } from "./TurretArmor.js";
 
 // ---------------------------------------------------------------------------
 // The remote counterpart to Turret.js. It never scans for targets, never
@@ -47,6 +48,7 @@ export class RemoteTurret {
     this.effects = new TurretEffectsPool(scene);
 
     this.evolution = new TurretEvolutionRig(this.parts);
+    this.armor = new TurretArmorRig(this.parts);
     this.evolutionStage = 0;
 
     applyTurretPose(this.parts, {
@@ -60,6 +62,7 @@ export class RemoteTurret {
     if (stage === this.evolutionStage) return;
     this.evolutionStage = stage;
     this.evolution.setStage(stage, { animate });
+    this.armor.setStage(stage, { animate });
   }
 
   // Called whenever a fresh network sample for this player arrives.
@@ -133,6 +136,7 @@ export class RemoteTurret {
       deployed: this.progress > 0.9,
       firing: this.recoil > 0
     });
+    this.armor.update(dt);
 
     this.effects.update(dt);
   }
@@ -140,5 +144,6 @@ export class RemoteTurret {
   dispose() {
     this.effects.dispose();
     this.evolution.dispose();
+    this.armor.dispose();
   }
 }

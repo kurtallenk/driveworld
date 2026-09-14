@@ -5,6 +5,7 @@ import { TurretEffectsPool } from "./TurretEffects.js";
 import { TURRET_CONFIG, LOCAL_TURRET_ANCHOR } from "./TurretConfig.js";
 import { stepAngle, stepToward, clamp, angleDifference } from "./TurretMath.js";
 import { TurretEvolutionRig } from "./TurretEvolution.js";
+import { TurretArmorRig } from "./TurretArmor.js";
 import { getTurretEvolutionConfig } from "../gameplay/EvolutionConfig.js";
 
 const STATE = {
@@ -68,6 +69,10 @@ export class Turret {
 
     // ---- Weapon evolution (requirement: turret evolves with level) -------
     this.evolution = new TurretEvolutionRig(this.parts);
+    // ---- Armor evolution -- purely visual, cumulative plating bolted onto
+    // the turret body/mantlet, kept as its own rig so it can never touch
+    // firing/targeting/damage (see TurretArmor.js).
+    this.armor = new TurretArmorRig(this.parts);
     this.evolutionStage = 0;
 
     applyTurretPose(this.parts, {
@@ -82,6 +87,7 @@ export class Turret {
   setEvolutionStage(stage, { animate = true } = {}) {
     this.evolutionStage = stage;
     this.evolution.setStage(stage, { animate });
+    this.armor.setStage(stage, { animate });
   }
 
   // Called once when the player dies (see Game.js's playerHealth.onDeath).
@@ -317,6 +323,7 @@ export class Turret {
       deployed: this.state === STATE.DEPLOYED,
       firing: this.fireCooldown > 0
     });
+    this.armor.update(dt);
 
     this.effects.update(dt);
   }
@@ -340,5 +347,6 @@ export class Turret {
   dispose() {
     this.effects.dispose();
     this.evolution.dispose();
+    this.armor.dispose();
   }
 }
