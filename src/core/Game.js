@@ -24,6 +24,7 @@ import { MANUAL_CONFIG } from "../vehicle/ManualDrivetrain.js";
 import { TurboSystem, applyTurboToControls } from "../vehicle/TurboSystem.js";
 import { ExhaustSystem } from "../vehicle/ExhaustSystem.js";
 import { VehicleDestruction } from "../vehicle/VehicleDestruction.js";
+import { getEvolutionStage, getVehicleEvolutionConfig, getTurretEvolutionConfig } from "../gameplay/EvolutionConfig.js";
 
 // Tachometer scale for the dashboard's RPM arc. Redline comes straight
 // from the manual drivetrain's own config, so the gauge always agrees
@@ -151,6 +152,11 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     // --- Player HP / leveling ------------------------------------------
     this.playerHealth = new PlayerHealth();
     this.levelSystem = new LevelSystem();
+    // Evolution stage is always re-derived from level (see EvolutionConfig.js)
+    // -- this field just tracks "what stage did we last apply" so onLevelUp
+    // below only fires the notice/rig update on an actual stage change, not
+    // every single level-up (e.g. level 2->3 keeps stage 1).
+    this.vehicleEvolutionStage = 0;
 
     this.playerHealthBar = new HealthBar(this.scene, {
       width: 2.0, height: 0.2, yOffset: 2.3
@@ -217,6 +223,15 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       this.vehicleDestruction.deactivate();
       this.hideDeathScreen();
       this.showNotice("Back in the fight!", 1.5);
+
+      // Defensive re-apply: evolution rigs never get hidden/rebuilt by the
+      // wreck sequence (VehicleDestruction only darkens materials, it never
+      // touches this.root's children), so the earned stage should already
+      // be showing -- this is a no-op in that case (setStage/setEvolutionStage
+      // are idempotent) and just guards against death/respawn ever losing or
+      // replaying the evolution reveal animation.
+      this.vehicle.setEvolutionStage(this.vehicleEvolutionStage, { animate: false });
+      this.turret.setEvolutionStage(this.vehicleEvolutionStage, { animate: false });
     };
 
     this.levelSystem.onLevelUp = level => {
@@ -226,7 +241,24 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
         this.turret.damageMultiplier += PLAYER_CONFIG.turretDamageBonusPerInterval;
       }
 
-      this.showNotice(`★ LEVEL UP! ★  LEVEL ${level}`, 2.5);
+      const newStage = getEvolutionStage(level);
+      if (newStage !== this.vehicleEvolutionStage) {
+        this.vehicleEvolutionStage = newStage;
+        this.vehicle.setEvolutionStage(newStage);
+        this.turret.setEvolutionStage(newStage);
+
+        const vehicleConfig = getVehicleEvolutionConfig(newStage);
+        const turretConfig = getTurretEvolutionConfig(newStage);
+        // Single combined notice -- showNotice() replaces text/timer rather
+        // than queuing, so firing it twice in the same frame (once per
+        // system) would just drop the first message.
+        this.showNotice(
+          `LEVEL ${level}! VEHICLE EVOLUTION: ${vehicleConfig.label} / ${turretConfig.label}`,
+          3
+        );
+      } else {
+        this.showNotice(`★ LEVEL UP! ★  LEVEL ${level}`, 2.5);
+      }
     };
 
     this.targetSystem = new TargetSystem(
@@ -760,6 +792,7 @@ if (this.input.consumeReset() && !this.playerHealth.dead) {
 }
 
     this.vehicle.sync();
+    this.vehicle.update(dt);
     this.deliverySystem.update(this.vehiclePhysics.body.position, dt);
     this.world.destructibles.update(dt);
 

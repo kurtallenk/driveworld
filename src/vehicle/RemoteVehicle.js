@@ -8,43 +8,20 @@ import { VehicleDestruction } from "../vehicle/VehicleDestruction.js";
 import { VehicleEvolutionRig } from "../vehicle/VehicleEvolution.js";
 import { getEvolutionStage } from "../gameplay/EvolutionConfig.js";
 import {
+  COLLISION_GROUPS,
+  REMOTE_VEHICLE_CANNON_MATERIAL
+} from "../vehicle/CollisionGroups.js";
+import {
   buildVehicleBody,
   buildWheelGeometries,
   createWheel
 } from "../vehicle/VehicleVisual.js";
-import {
-  COLLISION_GROUPS,
-  REMOTE_VEHICLE_CANNON_MATERIAL
-} from "../vehicle/CollisionGroups.js";
 
-// Matches the local player's own chassis collider (VehiclePhysics.js) so a
-// bump against a remote car and a bump against the local car's own shape
-// feel the same size. Remote vehicles have no real physics simulation of
-// their own (their position/rotation come entirely from network
-// snapshots) -- this box only exists so the LOCAL player's dynamic body
-// has something solid to push against. See MultiplayerClient.syncPhysics.
 const COLLIDER_HALF_EXTENTS = new CANNON.Vec3(0.9, 0.3, 2);
 const COLLIDER_OFFSET = new CANNON.Vec3(0, 0.15, 0);
-
 const INTERPOLATION_DELAY = 120;
-
-// A little clearance above the top edge of the nameplate sprite
-// (label.position.y=2, label.scale.y=0.525) so the bubble tail never
-// overlaps the player's name.
 const BUBBLE_ANCHOR_Y = 2.35;
 
-// ---------------------------------------------------------------------------
-// RemoteVehicle
-// ---------------------------------------------------------------------------
-// Network/state representation of another player. All body/interior/wheel
-// geometry and materials come from the shared VehicleVisual.js -- the exact
-// same construction the local player's Vehicle.js uses -- so remote cars
-// are visually identical to the local car. Only the *wiring* differs: each
-// wheel here is wrapped in a small pivot group (steering angle + spin
-// simulated from interpolated network state) instead of being positioned
-// from real per-wheel physics transforms.
-
-export class RemoteVehicle {
   constructor(scene, player, physics = null) {
     this.scene = scene;
     this.id = player.id;
@@ -57,11 +34,6 @@ export class RemoteVehicle {
 
     this.samples = [];
     this.lastState = player.state;
-
-    // Kinematic: driven directly by syncPhysics() from network state, never
-    // moved by forces/gravity/solver impulses itself, but still solid to
-    // the local player's dynamic chassis body. `physics` is optional so
-    // this class still works if it's ever used without a physics world.
     this.physics = physics;
     this.body = null;
 
@@ -71,57 +43,36 @@ export class RemoteVehicle {
         type: CANNON.Body.KINEMATIC,
         material: REMOTE_VEHICLE_CANNON_MATERIAL,
         collisionFilterGroup: COLLISION_GROUPS.REMOTE,
-        // Only the local vehicle needs to feel this body. It deliberately
-        // does not collide with the world (terrain/buildings/trees) or
-        // with other remotes -- those interactions have no visible owner
-        // to react to them, since this box isn't simulated.
         collisionFilterMask: COLLISION_GROUPS.VEHICLE
       });
 
       this.body.addShape(new CANNON.Box(COLLIDER_HALF_EXTENTS), COLLIDER_OFFSET);
 
-      if (player.state?.position) {
-        this.body.position.set(...player.state.position);
-      }
-
-      if (player.state?.rotation) {
-        this.body.quaternion.set(...player.state.rotation);
-      }
+      if (player.state?.position) this.body.position.set(...player.state.position);
+      if (player.state?.rotation) this.body.quaternion.set(...player.state.rotation);
 
       physics.addBody(this.body);
     }
 
-    // Full body/interior construction -- identical to the local player's
-    // Vehicle.js, via the shared VehicleVisual.js builder. `driverEye` is a
-    // camera anchor only the local player needs (ignored here); the
-    // steering wheel and dashboard are kept for visual parity but are not
-    // animated per-frame for remote players (see update() below) to avoid
-    // redrawing a dashboard canvas texture for every remote car on screen.
-    const {
-      mat,
-      exhaustPoints,
-      steeringWheel
-    } = buildVehicleBody(this.root, player.color);
+    // IMPORTANT: this is the exact same geometry/material construction as the
+    // local Vehicle.js. Only transform ownership differs: the remote root is
+    // network-driven, while the local root is physics-driven.
+    const visual = buildVehicleBody(this.root, player.color);
+    this.paint = visual.mat.paint;
+    this.brakeMaterial = visual.mat.tailLamp;
+    this.exhaustPoints = visual.exhaustPoints;
+    this.driverEye = visual.driverEye;
+    this.steeringWheel = visual.steeringWheel;
+    this.dashboardCanvas = visual.dashboardCanvas;
+    this.dashboardContext = visual.dashboardContext;
+    this.dashboardTexture = visual.dashboardTexture;
 
-    this.paint = mat.paint;
-    this.exhaustPoints = exhaustPoints;
-    this.steeringWheel = steeringWheel;
-    this.brakeMaterial = mat.tailLamp;
-
-    // ---- Wheels -------------------------------------------------------------
-    // Same detailed 5-spoke wheel (tire, alloy rim, brake disc, caliper,
-    // lug nuts) as the local vehicle. Each wheel is wrapped in its own
-    // pivot group parented under this.root -- unlike the local vehicle,
-    // which positions wheels directly from real per-wheel physics
-    // transforms, a remote vehicle has no physics simulation of its own, so
-    // steering angle and spin are simulated from interpolated network
-    // state in update() below. Pivot offsets match the local vehicle's
-    // actual physics wheel connection points (see VehiclePhysics.js) so the
-    // wheels sit under the fenders correctly now that the body is shared.
     const wheelGeo = buildWheelGeometries();
-
     this.wheels = [];
 
+    // Remote wheels use the same wheel geometry as Vehicle.js. Their corner
+    // pivots approximate the same chassis mounting points because no remote
+    // Cannon.RaycastVehicle exists on this client.
     for (const [x, z, front] of [
       [-0.95, 1.35, true],
       [0.95, 1.35, true],
@@ -130,53 +81,36 @@ export class RemoteVehicle {
     ]) {
       const pivot = new THREE.Group();
       pivot.position.set(x, -0.32, z);
-
-      // Matches Vehicle.js's convention (left wheels: +1, right wheels: -1)
-      // so the rim face/spokes/lug nuts/brake disc all sit on the correct
-      // (outboard-facing) side of the wheel.
-      const inboardSign = x < 0 ? 1 : -1;
-      const tire = createWheel(wheelGeo, mat, inboardSign);
+      const tire = createWheel(wheelGeo, visual.mat, this.wheels.length % 2 === 0 ? 1 : -1);
       pivot.add(tire);
-
       this.root.add(pivot);
       this.wheels.push({ pivot, tire, front });
     }
 
-    // ---- Nameplate ------------------------------------------------------------
+    // Remote-only presentation.
     const canvas = document.createElement("canvas");
     canvas.width = 300;
     canvas.height = 80;
-
     const context = canvas.getContext("2d");
     context.fillStyle = "#09131ed9";
     context.fillRect(0, 0, 300, 80);
     context.fillStyle = "#ffffff";
     context.textAlign = "center";
 
-    // Shrink the font for longer names so it never overflows the label.
     let fontSize = 50;
     context.font = `bold ${fontSize}px sans-serif`;
-
-    while (
-      context.measureText(this.name).width > 460 &&
-      fontSize > 18
-    ) {
+    while (context.measureText(this.name).width > 460 && fontSize > 18) {
       fontSize -= 2;
       context.font = `bold ${fontSize}px sans-serif`;
     }
-
     context.fillText(this.name, 150, 50);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-
-    this.label = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: texture,
-        depthWrite: false
-      })
-    );
-
+    this.label = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: texture,
+      depthWrite: false
+    }));
     this.label.position.set(0.1, 2.4, 0);
     this.label.scale.set(1.25, 0.3, 1);
     this.root.add(this.label);
@@ -184,26 +118,18 @@ export class RemoteVehicle {
     this.chatBubble = new ChatBubble(this.root, BUBBLE_ANCHOR_Y);
     this.turret = new RemoteTurret(this.root, this.scene, player.color);
 
-    // Armor evolution -- built lazily as this remote player's level
-    // (reported in state.level) crosses each milestone; see pushState().
+    // Remote evolution: initial state is applied instantly; later stage changes
+    // animate exactly once, allowing every client to see another player's
+    // transformation.
     this.evolution = new VehicleEvolutionRig(this.root);
-    this.evolutionStage = 0;
+    this.evolutionStage = null;
 
     this.exhaust = new ExhaustSystem(scene, this.root, this.exhaustPoints);
 
-    // Other players' HP bar. Reuses the exact same billboarded 3D bar the
-    // local player's own HP uses (Game.js's this.playerHealthBar) rather
-    // than a second, separately-styled HP UI -- see HealthBar.js. Sits a
-    // little above the nameplate sprite. Hidden until the first real health
-    // value arrives (HealthBar starts hidden on its own).
     this.healthBar = new HealthBar(scene, {
       width: 1.6, height: 0.16, yOffset: 2.65
     });
 
-    // Destroyed/wreck visuals for other players -- purely presentational
-    // (no physics body drives a remote vehicle, so no tilt impulse is
-    // passed to activate()). Toggled from pushState() below whenever the
-    // networked `dead` flag changes.
     this.destruction = new VehicleDestruction(scene, this.root);
     this.wasDead = false;
 
@@ -262,11 +188,20 @@ export class RemoteVehicle {
     // after that plays the full animated sequence, same as the local
     // player, so other clients see it happen live (requirement: remote
     // evolution must animate too).
-    const evolutionStage = getEvolutionStage(state.level);
-    const animate = this._firstStateApplied === true;
-    this.evolution.setStage(evolutionStage, { animate });
-    this.turret.setEvolutionStage(evolutionStage, { animate });
-    this._firstStateApplied = true;
+    // Level is the authoritative progression value replicated by the player.
+    // Derive the visual stage from it on every snapshot. Only a real stage
+    // transition triggers the transformation animation; normal movement
+    // snapshots must never restart the animation.
+    const rawLevel = Number.isFinite(state.level) ? state.level : 0;
+    const evolutionStage = getEvolutionStage(rawLevel);
+    const stageChanged = this.evolutionStage !== evolutionStage;
+    const animate = this.evolutionStage !== null && stageChanged;
+
+    if (stageChanged) {
+      this.evolution.setStage(evolutionStage, { animate });
+      this.turret.setEvolutionStage(evolutionStage, { animate });
+      this.evolutionStage = evolutionStage;
+    }
 
     // HP bar. Health is reported by each client for itself (see
     // MultiplayerClient.sendState) the same way position/steering/turret
@@ -399,13 +334,6 @@ export class RemoteVehicle {
 
     this.brakeMaterial.emissiveIntensity =
       state.brake > 0.1 ? 1.5 : 0.25;
-
-    // Cheap visual-parity touch: the local vehicle rotates its interior
-    // steering wheel from live steering input (see
-    // Vehicle.updatePresentation); mirroring that here from the same
-    // networked `state.steering` used for the front wheels above costs one
-    // rotation assignment per frame, no canvas redraw.
-    this.steeringWheel.rotation.z = state.steering * Math.PI * 1.25;
 
     // Runs after this.root's position/quaternion are updated above so the
     // turret's own world-matrix math (muzzle position for fire effects)

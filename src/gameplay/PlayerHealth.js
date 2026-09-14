@@ -82,7 +82,7 @@ export class PlayerHealth {
     const wasDead = this.dead;
     const previousHealth = this.health;
 
-    this.maxHealth = serverMaxHealth;
+    // this.maxHealth = serverMaxHealth;
 
     if (serverDead && !wasDead) {
       this.health = 0;
@@ -104,6 +104,24 @@ export class PlayerHealth {
     }
 
     if (!serverDead && !wasDead) {
+      // Guard against a stale snapshot: level-up applies its full-heal
+      // (see addMaxHealth) locally the instant XP crosses a threshold, but
+      // the server only learns the new level from this client's own next
+      // "state" message (sent up to ~50ms later, see MultiplayerClient's
+      // send timer) and then has to round-trip a corrected snapshot back
+      // (see server.js's applyReportedLevel + the ~66ms snapshot timer).
+      // Without this check, any snapshot broadcast during that window still
+      // carries the OLD, lower maxHealth/health, and applying it here would
+      // immediately drag a just-restored full bar back down -- worse, if
+      // the player is mid-fight when they level up, ongoing damage keeps
+      // that stale-looking window populated with real (lower) numbers, so
+      // the bar visually never reaches full at all. A snapshot only ever
+      // counts as authoritative here once its maxHealth has caught up to
+      // what this client already knows locally; older snapshots are
+      // skipped rather than applied, and the very next snapshot after the
+      // server catches up confirms the correct value.
+      if (serverMaxHealth < this.maxHealth) return;
+
       this.health = serverHealth;
 
       const damageTaken = previousHealth - serverHealth;
@@ -111,12 +129,17 @@ export class PlayerHealth {
     }
   }
 
-  // Called by Game.js's LevelSystem.onLevelUp hook -- also tops off current
-  // HP by the same amount so leveling up feels like a reward, not just a
-  // higher ceiling.
+  // Called by Game.js's LevelSystem.onLevelUp hook. Raises the ceiling by
+  // `amount` (PLAYER_CONFIG.hpPerLevel) and, per the "leveling fully
+  // restores health" requirement, sets current HP to the new ceiling
+  // outright rather than only topping it off by the granted amount -- using
+  // this class's own maxHealth as the sole source of truth, never a
+  // hardcoded value. onLevelUp fires exactly once per level gained (see
+  // LevelSystem.addXP's while-loop), so this runs once per level-up event,
+  // never on ordinary XP gain that doesn't cross a level threshold.
   addMaxHealth(amount) {
     this.maxHealth += amount;
-    this.health = Math.min(this.maxHealth, this.health + amount);
+    this.health = this.maxHealth;
   }
 
   update(dt) {

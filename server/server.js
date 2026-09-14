@@ -9,6 +9,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { EnemyWorld } from "./EnemyWorld.js";
 import { ENEMY_CONFIG, PLAYER_CONFIG, TURRET_CONFIG } from "../src/turret/TurretConfig.js";
+import { getEvolutionStage } from "../src/gameplay/EvolutionConfig.js";
 
 const PORT = Number(process.env.PORT || 3001);
 
@@ -344,14 +345,30 @@ function initialState(spawn) {
     paused: false,
     turret: initialTurretState(),
 
-    // These three fields are cosmetic mirrors of player.combat (below) --
+    // These fields are cosmetic mirrors of player.combat (below) --
     // kept on `state` too because that's what already flows out through
     // the existing "snapshot"/"welcome"/"join" broadcasts and what
     // RemoteVehicle.js already reads client-side. See syncCombatIntoState().
     health: PLAYER_CONFIG.maxHealth,
     maxHealth: PLAYER_CONFIG.maxHealth,
     dead: false,
-    turbo: false
+    turbo: false,
+
+    // Raw level -- RemoteVehicle.pushState() derives its own evolution
+    // stage from this via getEvolutionStage() (see EvolutionConfig.js), so
+    // this is the only evolution-related value that actually needs to
+    // travel the wire. vehicleEvolutionStage below is an additional,
+    // server-recomputed convenience mirror -- see its comment.
+    level: 1,
+
+    // Recomputed server-side from player.combat.level on every sync, never
+    // taken from the client -- see syncCombatIntoState(). Not currently
+    // consumed by any client code (RemoteVehicle already derives its own
+    // stage from `level` above), but kept authoritative and available here
+    // per the "never trust a client-supplied evolution stage" requirement,
+    // in case any future UI/leaderboard wants the stage without
+    // re-deriving it.
+    vehicleEvolutionStage: 0
   };
 }
 
@@ -362,14 +379,28 @@ function initialState(spawn) {
 // validateState below), HP/dead is fully server-owned once enemies became
 // networked: enemy damage has to be decided in exactly one place for every
 // player to agree on it, the same way enemy HP does.
+//
+// `level` joined this record as part of the evolution feature: it used to
+// be entirely absent server-side, which meant maxHealth here never grew
+// past the level-1 default and PlayerHealth.applyServerState() on the
+// client would silently overwrite a leveled-up player's real maxHealth
+// back down to 100 on the very next snapshot. See deriveMaxHealth() below.
 // ---------------------------------------------------------------------------
 function initialCombat() {
   return {
     health: PLAYER_CONFIG.maxHealth,
     maxHealth: PLAYER_CONFIG.maxHealth,
     dead: false,
-    respawnAt: 0
+    respawnAt: 0,
+    level: 1
   };
+}
+
+// Same level -> maxHealth formula PlayerHealth.addMaxHealth() produces
+// client-side (Game.js's onLevelUp calls it once per level with
+// PLAYER_CONFIG.hpPerLevel) -- kept as one function so the two never drift.
+function deriveMaxHealth(level) {
+  return PLAYER_CONFIG.maxHealth + (level - 1) * PLAYER_CONFIG.hpPerLevel;
 }
 
 // Mirrors the authoritative combat fields onto player.state so they ride
@@ -378,6 +409,41 @@ function syncCombatIntoState(player) {
   player.state.health = player.combat.health;
   player.state.maxHealth = player.combat.maxHealth;
   player.state.dead = player.combat.dead;
+  player.state.level = player.combat.level;
+  player.state.vehicleEvolutionStage = getEvolutionStage(player.combat.level);
+}
+
+// Soft anti-cheat, not real anti-cheat: there is no server-side XP
+// simulation (kills/XP are tracked for the leaderboard, not replayed into
+// a level here), so this cannot catch a modified client that simply claims
+// a too-high level from the start. What it DOES guarantee is that level
+// (and therefore maxHealth/evolution stage) can only ever increase within
+// a session, matching the game's own "evolution never regresses" rule
+// (see EvolutionConfig.js) and preventing a client from lowering its
+// reported level later to some advantage. Called once per validated
+// "state" message, before syncCombatIntoState() mirrors the result back
+// onto player.state.
+const MAX_LEVEL = 999; // sanity ceiling well above anything reachable in a session
+
+function applyReportedLevel(player, reportedLevel) {
+  const level = Number.isInteger(reportedLevel)
+    ? Math.max(1, Math.min(MAX_LEVEL, reportedLevel))
+    : player.combat.level;
+
+  if (level <= player.combat.level) return;
+
+  player.combat.level = level;
+  player.combat.maxHealth = deriveMaxHealth(level);
+
+  // Fully restore HP to the new ceiling, mirroring PlayerHealth.addMaxHealth()'s
+  // "leveling up fully restores health" behavior client-side -- without this,
+  // a level-up would raise the ceiling but leave current HP unchanged (or only
+  // partially topped off), unlike the local/offline experience. A dead player
+  // stays dead/at 0 HP here; their next respawn already sets health to the
+  // (now higher) maxHealth on its own.
+  if (!player.combat.dead) {
+    player.combat.health = player.combat.maxHealth;
+  }
 }
 
 function applyDamageToPlayer(playerId, amount, enemyId) {
@@ -522,7 +588,17 @@ function validateState(raw) {
     // treatment as health above (see MultiplayerClient.sendState).
     dead: raw.dead === true,
 
-    turbo: raw.turbo === true
+    turbo: raw.turbo === true,
+
+    // Parsed and bounded here just like health/maxHealth above, and same
+    // caveat: this parsed value is never trusted directly. The "state"
+    // message handler passes it through applyReportedLevel() first, which
+    // enforces monotonicity and re-derives maxHealth server-side, before
+    // syncCombatIntoState() overwrites this field with the authoritative
+    // result.
+    level: Number.isInteger(raw.level)
+      ? Math.max(1, Math.min(MAX_LEVEL, raw.level))
+      : 1
   };
 }
 
@@ -653,12 +729,17 @@ wss.on("connection", (ws, request) => {
       player.lastSequence = message.sequence;
       player.state = state;
 
-      // health/maxHealth/dead on the incoming state are whatever the
+      // Level feeds maxHealth/evolution-stage derivation (see
+      // applyReportedLevel()) before the combat record gets mirrored back
+      // onto player.state just below -- must run first so that mirror
+      // reflects this message's level, not last message's.
+      applyReportedLevel(player, state.level);
+
+      // health/maxHealth/dead/level on the incoming state are whatever the
       // client last reported for itself -- now that enemy damage is
-      // authoritative (requirement #10/#11), those three fields must
-      // always be overwritten with the server's own combat record rather
-      // than trusted from the client, immediately after every state
-      // update.
+      // authoritative (requirement #10/#11), those fields must always be
+      // overwritten with the server's own combat record rather than
+      // trusted from the client, immediately after every state update.
       syncCombatIntoState(player);
       return;
     }

@@ -358,11 +358,12 @@ export class MultiplayerClient {
       const now = performance.now();
 
       for (const player of message.players) {
-        if (player.id === this.selfId) {
-          // This client's own HP/dead is authoritative from here (see the
+        // This client's own HP/dead is authoritative from here (see the
           // "welcome" handler above) -- apply it the same way every other
           // player's state already gets applied, instead of trusting the
           // locally-simulated PlayerHealth.
+        if (player.id === this.selfId) {
+          
           this.game.playerHealth?.applyServerState(
             player.state.health,
             player.state.maxHealth,
@@ -540,6 +541,12 @@ export class MultiplayerClient {
         health: game.playerHealth?.health ?? 0,
         maxHealth: game.playerHealth?.maxHealth ?? 0,
         dead: game.playerHealth?.dead === true,
+
+        // Drives remote vehicle/turret evolution stage (see
+        // RemoteVehicle.pushState -> getEvolutionStage()). Only the raw
+        // level travels the wire -- every observer derives the visual stage
+        // locally from this single number (see EvolutionConfig.js).
+        level: game.levelSystem?.level ?? 1,
 
         // Drives the brighter/faster exhaust look on other players' cars
         // (see ExhaustSystem) -- purely presentational, not re-simulated.

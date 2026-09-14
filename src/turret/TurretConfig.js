@@ -112,7 +112,7 @@ export const ENEMY_CONFIG = {
 // ---------------------------------------------------------------------------
 export const PLAYER_CONFIG = {
   maxHealth: 100,
-  respawnDelay: 5, // seconds spent in the death state before respawning -- gives the destruction sequence (explosion, wreck, death screen countdown) room to read
+  respawnDelay: 3, // seconds spent in the death state before respawning -- gives the destruction sequence (explosion, wreck, death screen countdown) room to read
   hpPerLevel: 10, // + max HP each level
   turretDamageLevelInterval: 3, // every N levels...
   turretDamageBonusPerInterval: 0.05 // ...+5% turret damage
@@ -123,13 +123,14 @@ export const LEVEL_CONFIG = {
   curveExponent: 1.35 // xpRequired(level) = baseXP * level^curveExponent
 };
 
-// Roof anchor points, in each vehicle's own local space. The local player's
-// Vehicle.js roof sits a little higher (panoramic glass roof) than the
-// lighter-weight RemoteVehicle.js body, so each gets its own anchor. Both
-// are positioned toward the rear of the roof, clear of the sunroof glass
-// panel and just ahead of the roof's trailing edge.
-export const LOCAL_TURRET_ANCHOR = { x: 0, y: 1.34, z: -0.85 };
-export const REMOTE_TURRET_ANCHOR = { x: 0, y: 1.05, z: -0.85 };
+// Roof anchor point, in the vehicle's own local space, positioned toward
+// the rear of the roof, clear of the sunroof glass panel and just ahead of
+// the roof's trailing edge. Vehicle.js and RemoteVehicle.js both build their
+// body/roof from the exact same shared geometry (see VehicleVisual.js), so
+// there is only one anchor -- a separate, lower REMOTE_TURRET_ANCHOR used to
+// exist here from before that geometry was unified, and left every other
+// player's turret sitting visibly lower than the local player's.
+export const TURRET_ANCHOR = { x: 0, y: 1.34, z: -0.85 };
 
 export const TURRET_WIRE_STATES = [
   "undeployed",

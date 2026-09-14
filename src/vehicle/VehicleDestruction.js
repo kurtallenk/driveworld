@@ -157,10 +157,26 @@ export class VehicleDestruction {
 
     this.originalMaterials = new Map(); // material -> saved {color, emissiveIntensity, metalness, roughness}
 
+    // Evolution armor/weapon meshes (see VehicleEvolution.js/TurretEvolution.js)
+    // use a module-level material shared by every vehicle instance in the
+    // scene, flagged via userData.sharedEvolutionMaterial. Those never go
+    // into originalMaterials above -- they get a private per-activation
+    // clone swapped onto the mesh instead (see _darkenMaterials()), tracked
+    // here as { object, originalMaterial } so _restoreMaterials() can put
+    // each mesh straight back on its real (shared, untouched) material and
+    // dispose the clone.
+    this._sharedSwaps = [];
+
     this.flash = null;
     this.flashAge = 0;
 
     this._worldPoint = new THREE.Vector3();
+  }
+
+  _darkenMaterial(material) {
+    if (material.color) material.color.multiplyScalar(CHAR_DARKEN);
+    if (typeof material.metalness === "number") material.metalness = 0;
+    if (typeof material.roughness === "number") material.roughness = 1;
   }
 
   // Traverses the vehicle mesh tree once per activation, caching + darkening
@@ -168,13 +184,38 @@ export class VehicleDestruction {
   // instance -- see Vehicle.js's createMaterials -- so each is only touched
   // once). Covers paint, trim, glass, and the dashboard display alike: a
   // charred, powered-down look is correct for all of them.
+  //
+  // Evolution meshes are handled separately (see class-level comment above)
+  // -- their material is a cross-vehicle singleton, so it's cloned once per
+  // unique shared material per activation (sharedClones below) rather than
+  // mutated in place, and the clone is what actually gets darkened.
   _darkenMaterials() {
+    const sharedClones = new Map(); // shared original material -> this activation's private clone
+
     this.root.traverse(object => {
-      const materials = Array.isArray(object.material)
-        ? object.material
-        : object.material
-          ? [object.material]
-          : [];
+      if (!object.material) return;
+
+      const isArray = Array.isArray(object.material);
+      const materials = isArray ? object.material : [object.material];
+
+      if (object.userData?.sharedEvolutionMaterial === true) {
+        const swapped = materials.map(material => {
+          let clone = sharedClones.get(material);
+          if (!clone) {
+            clone = material.clone();
+            sharedClones.set(material, clone);
+            this._darkenMaterial(clone);
+          }
+          return clone;
+        });
+
+        this._sharedSwaps.push({
+          object,
+          originalMaterial: object.material // single value or array, exactly as it was
+        });
+        object.material = isArray ? swapped : swapped[0];
+        return;
+      }
 
       for (const material of materials) {
         if (this.originalMaterials.has(material)) continue;
@@ -191,9 +232,7 @@ export class VehicleDestruction {
             typeof material.roughness === "number" ? material.roughness : null
         });
 
-        if (material.color) material.color.multiplyScalar(CHAR_DARKEN);
-        if (typeof material.metalness === "number") material.metalness = 0;
-        if (typeof material.roughness === "number") material.roughness = 1;
+        this._darkenMaterial(material);
       }
     });
   }
@@ -208,6 +247,26 @@ export class VehicleDestruction {
       if (saved.roughness !== null) material.roughness = saved.roughness;
     }
     this.originalMaterials.clear();
+
+    // Put every evolution mesh back on its real (shared, never-mutated)
+    // material and dispose the private clone that stood in for it. Each
+    // clone is only ever referenced by the one or two meshes swapped onto
+    // it during this activation, so once every swap referencing it has been
+    // reverted, it's safe to dispose -- tracked via disposedClones so a
+    // clone shared by several meshes (e.g. every "plate" armor piece) is
+    // only disposed once, not once per mesh.
+    const disposedClones = new Set();
+    for (const { object, originalMaterial } of this._sharedSwaps) {
+      const clones = Array.isArray(object.material) ? object.material : [object.material];
+      for (const clone of clones) {
+        if (!disposedClones.has(clone)) {
+          clone.dispose();
+          disposedClones.add(clone);
+        }
+      }
+      object.material = originalMaterial;
+    }
+    this._sharedSwaps.length = 0;
   }
 
   // body: optional CANNON.Body (local player only). Gets a one-shot random

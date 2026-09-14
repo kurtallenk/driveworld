@@ -2,8 +2,10 @@ import * as THREE from "three";
 import { createTurretAssembly } from "./TurretModel.js";
 import { applyTurretPose } from "./TurretPose.js";
 import { TurretEffectsPool } from "./TurretEffects.js";
-import { TURRET_CONFIG, LOCAL_TURRET_ANCHOR } from "./TurretConfig.js";
+import { TURRET_CONFIG, TURRET_ANCHOR } from "./TurretConfig.js";
 import { stepAngle, stepToward, clamp, angleDifference } from "./TurretMath.js";
+import { TurretEvolutionRig } from "./TurretEvolution.js";
+import { getTurretEvolutionConfig } from "../gameplay/EvolutionConfig.js";
 
 const STATE = {
   UNDEPLOYED: "undeployed",
@@ -37,9 +39,9 @@ export class Turret {
     this.parts = assembly.parts;
 
     assembly.root.position.set(
-      LOCAL_TURRET_ANCHOR.x,
-      LOCAL_TURRET_ANCHOR.y,
-      LOCAL_TURRET_ANCHOR.z
+      TURRET_ANCHOR.x,
+      TURRET_ANCHOR.y,
+      TURRET_ANCHOR.z
     );
     vehicleRoot.add(assembly.root);
 
@@ -64,9 +66,22 @@ export class Turret {
 
     this.effects = new TurretEffectsPool(scene);
 
+    // ---- Weapon evolution (requirement: turret evolves with level) -------
+    this.evolution = new TurretEvolutionRig(this.parts);
+    this.evolutionStage = 0;
+
     applyTurretPose(this.parts, {
       progress: 0, yaw: 0, pitch: 0, recoil: 0, flash: 0
     });
+  }
+
+  // Called by Game.js's levelSystem.onLevelUp handler (via getEvolutionStage)
+  // whenever the player's turret milestone changes. `animate: false` is used
+  // for restoring a previously-reached stage (e.g. on initial spawn) without
+  // replaying the transformation sequence.
+  setEvolutionStage(stage, { animate = true } = {}) {
+    this.evolutionStage = stage;
+    this.evolution.setStage(stage, { animate });
   }
 
   // Called once when the player dies (see Game.js's playerHealth.onDeath).
@@ -215,21 +230,27 @@ export class Turret {
 
     if (!aimed || this.fireCooldown > 0) return;
 
-    this.fireCooldown = 1 / TURRET_CONFIG.fireRate;
+    const weapon = getTurretEvolutionConfig(this.evolutionStage);
+
+    this.fireCooldown = 1 / (TURRET_CONFIG.fireRate * weapon.fireRateMultiplier);
     this.fireSeq = (this.fireSeq + 1) % 65536;
     this.recoil = 1;
     this.flash = 1;
+    this.evolution.onFire();
 
-    this.parts.muzzleTip.getWorldPosition(scratchMuzzleWorld);
-    const muzzleOrigin = scratchMuzzleWorld.clone();
     const impactPoint = this.target.position.clone();
+    const perMountDamage =
+      TURRET_CONFIG.damage * this.damageMultiplier * weapon.damageMultiplier;
 
-    this.effects.spawnTracer(muzzleOrigin, impactPoint);
+    let destroyed = false;
+    for (const muzzle of this.evolution.getMuzzlePoints()) {
+      muzzle.getWorldPosition(scratchMuzzleWorld);
+      this.effects.spawnTracer(scratchMuzzleWorld.clone(), impactPoint);
 
-    const destroyed = targetSystem.applyDamage(
-      this.target,
-      TURRET_CONFIG.damage * this.damageMultiplier
-    );
+      if (!destroyed && this.target?.alive) {
+        destroyed = targetSystem.applyDamage(this.target, perMountDamage);
+      }
+    }
     this.effects.spawnImpact(impactPoint);
 
     if (destroyed) this.target = null;
@@ -292,13 +313,21 @@ export class Turret {
       flash: this.flash
     });
 
+    this.evolution.update(dt, {
+      deployed: this.state === STATE.DEPLOYED,
+      firing: this.fireCooldown > 0
+    });
+
     this.effects.update(dt);
   }
 
   // Compact payload merged into the player's regular network state message
   // (see MultiplayerClient.sendState). Deliberately excludes every
   // mechanical sub-part -- remote clients replicate the full mechanical
-  // animation locally from `state` alone (see RemoteTurret.js).
+  // animation locally from `state` alone (see RemoteTurret.js). Evolution
+  // stage itself is NOT sent from here -- it rides on the player's `level`
+  // field instead (see MultiplayerClient.sendState / RemoteVehicle.js),
+  // since it is derived the same way everywhere (see EvolutionConfig.js).
   getNetworkState() {
     return {
       state: this.state,
@@ -310,5 +339,6 @@ export class Turret {
 
   dispose() {
     this.effects.dispose();
+    this.evolution.dispose();
   }
 }

@@ -2,8 +2,9 @@ import * as THREE from "three";
 import { createTurretAssembly } from "./TurretModel.js";
 import { applyTurretPose } from "./TurretPose.js";
 import { TurretEffectsPool } from "./TurretEffects.js";
-import { TURRET_CONFIG, REMOTE_TURRET_ANCHOR } from "./TurretConfig.js";
+import { TURRET_CONFIG, TURRET_ANCHOR } from "./TurretConfig.js";
 import { stepAngle, stepToward } from "./TurretMath.js";
+import { TurretEvolutionRig } from "./TurretEvolution.js";
 
 // ---------------------------------------------------------------------------
 // The remote counterpart to Turret.js. It never scans for targets, never
@@ -25,9 +26,9 @@ export class RemoteTurret {
     this.parts = assembly.parts;
 
     assembly.root.position.set(
-      REMOTE_TURRET_ANCHOR.x,
-      REMOTE_TURRET_ANCHOR.y,
-      REMOTE_TURRET_ANCHOR.z
+      TURRET_ANCHOR.x,
+      TURRET_ANCHOR.y,
+      TURRET_ANCHOR.z
     );
     vehicleRoot.add(assembly.root);
 
@@ -45,9 +46,20 @@ export class RemoteTurret {
 
     this.effects = new TurretEffectsPool(scene);
 
+    this.evolution = new TurretEvolutionRig(this.parts);
+    this.evolutionStage = 0;
+
     applyTurretPose(this.parts, {
       progress: 0, yaw: 0, pitch: 0, recoil: 0, flash: 0
     });
+  }
+
+  // Called by RemoteVehicle.js when the remote player's level (and thus
+  // derived evolution stage) changes -- see EvolutionConfig.getEvolutionStage.
+  setEvolutionStage(stage, { animate = true } = {}) {
+    if (stage === this.evolutionStage) return;
+    this.evolutionStage = stage;
+    this.evolution.setStage(stage, { animate });
   }
 
   // Called whenever a fresh network sample for this player arrives.
@@ -72,18 +84,21 @@ export class RemoteTurret {
   playFireEffect() {
     this.recoil = 1;
     this.flash = 1;
+    this.evolution.onFire();
 
-    this.parts.muzzleTip.updateWorldMatrix(true, false);
-    const origin = new THREE.Vector3();
-    this.parts.muzzleTip.getWorldPosition(origin);
+    for (const muzzle of this.evolution.getMuzzlePoints()) {
+      muzzle.updateWorldMatrix(true, false);
+      const origin = new THREE.Vector3();
+      muzzle.getWorldPosition(origin);
 
-    const forward = new THREE.Vector3(0, 0, 1)
-      .applyQuaternion(this.parts.muzzleTip.getWorldQuaternion(new THREE.Quaternion()));
+      const forward = new THREE.Vector3(0, 0, 1)
+        .applyQuaternion(muzzle.getWorldQuaternion(new THREE.Quaternion()));
 
-    const endpoint = origin.clone().addScaledVector(forward, VISUAL_TRACER_LENGTH);
+      const endpoint = origin.clone().addScaledVector(forward, VISUAL_TRACER_LENGTH);
 
-    this.effects.spawnTracer(origin, endpoint);
-    this.effects.spawnImpact(endpoint);
+      this.effects.spawnTracer(origin, endpoint);
+      this.effects.spawnImpact(endpoint);
+    }
   }
 
   update(dt) {
@@ -114,10 +129,16 @@ export class RemoteTurret {
       flash: this.flash
     });
 
+    this.evolution.update(dt, {
+      deployed: this.progress > 0.9,
+      firing: this.recoil > 0
+    });
+
     this.effects.update(dt);
   }
 
   dispose() {
     this.effects.dispose();
+    this.evolution.dispose();
   }
 }
