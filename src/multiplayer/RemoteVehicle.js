@@ -191,7 +191,11 @@ export class RemoteVehicle {
 
     // Armor evolution -- built lazily as this remote player's level
     // (reported in state.level) crosses each milestone; see pushState().
-    this.evolution = new VehicleEvolutionRig(this.root);
+    // Wheel tech accents (stage 3+, see VehicleEvolution.js's
+    // addWheelAccent) are attached to each wheel's actual visual mesh
+    // group (`tire`), not its steering/spin pivot -- matching how the
+    // local Vehicle.js passes its own wheel groups.
+    this.evolution = new VehicleEvolutionRig(this.root, this.wheels.map(w => w.tire));
     this.evolutionStage = 0;
 
     this.exhaust = new ExhaustSystem(scene, this.root, this.exhaustPoints);
@@ -271,6 +275,11 @@ export class RemoteVehicle {
     const animate = this._firstStateApplied === true;
     this.evolution.setStage(evolutionStage, { animate });
     this.turret.setEvolutionStage(evolutionStage, { animate });
+    this.evolutionStage = evolutionStage;
+    // Keeps remote turbo flames in visual sync with this player's own
+    // armor stage (cyan-white at Elite/Ultimate) -- see ExhaustSystem.js.
+    // Purely cosmetic; never affects turbo gameplay.
+    this.exhaust.setEvolutionStage(evolutionStage);
     this._firstStateApplied = true;
 
     // HP bar. Health is reported by each client for itself (see

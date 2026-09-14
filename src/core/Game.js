@@ -232,6 +232,7 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       // replaying the evolution reveal animation.
       this.vehicle.setEvolutionStage(this.vehicleEvolutionStage, { animate: false });
       this.turret.setEvolutionStage(this.vehicleEvolutionStage, { animate: false });
+      this.exhaust.setEvolutionStage(this.vehicleEvolutionStage);
     };
 
     this.levelSystem.onLevelUp = level => {
@@ -246,6 +247,7 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
         this.vehicleEvolutionStage = newStage;
         this.vehicle.setEvolutionStage(newStage);
         this.turret.setEvolutionStage(newStage);
+        this.exhaust.setEvolutionStage(newStage);
 
         const vehicleConfig = getVehicleEvolutionConfig(newStage);
         const turretConfig = getTurretEvolutionConfig(newStage);

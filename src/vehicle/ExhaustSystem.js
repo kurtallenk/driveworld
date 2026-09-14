@@ -10,9 +10,19 @@ import * as THREE from "three";
 //
 // Two visual modes:
 //   - normal driving: small, slow, subtle grey smoke puffs
-//   - turbo active:   larger, faster, brighter orange/blue flame puffs
+//   - turbo active:   larger, faster, brighter flame puffs
 // so the turbo effect on its own communicates "turbo is active" without any
 // separate UI.
+//
+// The turbo flame's color also reflects the vehicle's evolution stage (see
+// VehicleEvolution.js): stock/mid stages get the classic orange flame, while
+// Elite/Ultimate stages (4-5) burn hotter cyan-white, matching the tech
+// accent color those stages already use on the body. This never changes
+// turbo *gameplay* (duration/cooldown/force -- see TurboSystem.js), only the
+// look of the particles it triggers. Call `setEvolutionStage(stage)` on this
+// instance whenever the owning vehicle's stage changes (mirrors
+// Vehicle.js/RemoteVehicle.js's own setEvolutionStage) to opt in; if it's
+// never called, exhaust looks exactly as before.
 // ---------------------------------------------------------------------------
 
 const MAX_PUFFS = 40;
@@ -47,6 +57,17 @@ function getSharedAssets() {
       opacity: 0.9,
       depthWrite: false,
       blending: THREE.AdditiveBlending
+    }),
+
+    // Hotter cyan-white flame used for Elite/Ultimate evolution stages (see
+    // ExhaustSystem's class-level comment above). Same lifetime/size/motion
+    // as the normal flame -- only the color changes.
+    eliteFlameMaterial: new THREE.MeshBasicMaterial({
+      color: 0x9ff4ea,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
     })
   };
 
@@ -54,7 +75,7 @@ function getSharedAssets() {
 }
 
 class Puff {
-  constructor(worldPosition, boosted) {
+  constructor(worldPosition, boosted, elite = false) {
     const assets = getSharedAssets();
 
     this.boosted = boosted;
@@ -62,10 +83,12 @@ class Puff {
     this.lifetime = boosted ? TURBO_LIFETIME : NORMAL_LIFETIME;
     this.baseSize = boosted ? TURBO_SIZE : NORMAL_SIZE;
 
-    this.mesh = new THREE.Mesh(
-      assets.geometry,
-      (boosted ? assets.flameMaterial : assets.smokeMaterial).clone()
-    );
+    const sourceMaterial = boosted
+      ? (elite ? assets.eliteFlameMaterial : assets.flameMaterial)
+      : assets.smokeMaterial;
+
+    this.mesh = new THREE.Mesh(assets.geometry, sourceMaterial.clone());
+    this.baseOpacity = sourceMaterial.opacity;
 
     this.mesh.position.copy(worldPosition);
     this.mesh.scale.setScalar(this.baseSize);
@@ -91,8 +114,7 @@ class Puff {
 
     const growth = this.boosted ? 1 + this.age * 3.5 : 1 + this.age * 1.8;
     this.mesh.scale.setScalar(this.baseSize * growth);
-    this.mesh.material.opacity =
-      (this.boosted ? 0.9 : 0.32) * Math.max(0, life);
+    this.mesh.material.opacity = this.baseOpacity * Math.max(0, life);
 
     if (camera) this.mesh.quaternion.copy(camera.quaternion);
 
@@ -119,6 +141,20 @@ export class ExhaustSystem {
     this.puffs = [];
     this.timeSinceEmit = 0;
     this._worldPoint = new THREE.Vector3();
+
+    // 0 by default (classic orange flame) -- see class-level comment.
+    // ELITE_FLAME_STAGE mirrors VehicleEvolution.js's stage 4 (Elite).
+    this.evolutionStage = 0;
+  }
+
+  // Mirrors Vehicle.js/RemoteVehicle.js's own setEvolutionStage -- call this
+  // from whatever owns both the vehicle and its ExhaustSystem whenever the
+  // vehicle's evolution stage changes, e.g.:
+  //   vehicle.setEvolutionStage(stage);
+  //   exhaustSystem.setEvolutionStage(vehicle.currentEvolutionStage);
+  // Safe to never call: exhaust then just keeps its stage-0 orange flame.
+  setEvolutionStage(stage) {
+    this.evolutionStage = stage;
   }
 
   // running: is the engine on / car "alive" (skip entirely for a
@@ -150,10 +186,11 @@ export class ExhaustSystem {
   }
 
   emit(boosting) {
+    const elite = boosting && this.evolutionStage >= 4;
     for (const offset of this.offsets) {
       this._worldPoint.copy(offset).applyMatrix4(this.root.matrixWorld);
 
-      const puff = new Puff(this._worldPoint, boosting);
+      const puff = new Puff(this._worldPoint, boosting, elite);
       this.scene.add(puff.mesh);
       this.puffs.push(puff);
     }

@@ -28,7 +28,10 @@ export class Vehicle {
       steeringWheel,
       dashboardCanvas,
       dashboardContext,
-      dashboardTexture
+      dashboardTexture,
+      statusCanvas,
+      statusContext,
+      statusTexture
     } = buildVehicleBody(this.root, color, vehicleType);
 
     this.exhaustPoints = exhaustPoints;
@@ -38,6 +41,13 @@ export class Vehicle {
     this.dashboardContext = dashboardContext;
     this.dashboardTexture = dashboardTexture;
     this.lastDashboardUpdate = -Infinity;
+    // Secondary console readout (see VehicleVisual.js's buildSedanBody) --
+    // painted once already; kept here in case a caller wants to repaint it
+    // with live turbo/health data the same way updatePresentation() already
+    // does for dashboardContext.
+    this.statusCanvas = statusCanvas;
+    this.statusContext = statusContext;
+    this.statusTexture = statusTexture;
 
     // ---- Wheels -------------------------------------------------------------
     // Visible wheels continue to follow the existing physics transforms;
@@ -52,7 +62,12 @@ export class Vehicle {
     });
 
     // ---- Armor evolution (level-based visual progression) -----------------
-    this.evolution = new VehicleEvolutionRig(this.root);
+    // Wheels are passed through so stage 3+ can attach a wheel-mounted tech
+    // accent ring that spins naturally with the wheel's own physics
+    // transform (see VehicleEvolution.js's addWheelAccent) -- purely
+    // additive, no change to wheel physics/sync().
+    this.evolution = new VehicleEvolutionRig(this.root, this.wheels);
+    this.currentEvolutionStage = 0;
 
     this.sync();
   }
@@ -61,8 +76,14 @@ export class Vehicle {
   // getVehicleEvolutionStage). `animate: false` restores a previously
   // reached stage instantly (e.g. right after respawn) instead of replaying
   // the transformation.
+  //
+  // `this.currentEvolutionStage` is kept in sync here so a caller that also
+  // owns this vehicle's ExhaustSystem (see ExhaustSystem.js's
+  // setEvolutionStage) can read it back and forward it along, without this
+  // module needing to know ExhaustSystem exists.
   setEvolutionStage(stage, { animate = true } = {}) {
     this.evolution.setStage(stage, { animate });
+    this.currentEvolutionStage = this.evolution.currentStage;
   }
 
   update(dt) {
