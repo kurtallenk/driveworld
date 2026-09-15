@@ -27,7 +27,7 @@ export class SettingsMenu {
     // Display tab: camera controls + HUD. Audio tab: volume controls.
     // Previously these all lived in one "Camera & Audio" page; split so
     // each tab only has settings a player would actually look for there.
-    this.moveButtonGroup("menu-display", ["camera-toggle"]);
+    this.moveButtonGroup("menu-display", ["camera-toggle", "fullscreen-toggle"]);
     this.moveButtonGroup("menu-audio", ["enable-audio"]);
 
     for (const [id, destinationId] of [

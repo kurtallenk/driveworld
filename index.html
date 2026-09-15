@@ -83,18 +83,6 @@
 
             <ul class="intro-patch-list">
 
-              <li class="intro-patch-item" style="--patch-color: #ffb35c">
-                <span class="intro-patch-icon" aria-hidden="true">&#9889;</span>
-                <div class="intro-patch-copy">
-                  <p class="intro-patch-name">
-                    Battery System and Charging Station <span class="intro-patch-badge">New</span>
-                  </p>
-                  <p class="intro-patch-desc"> 
-                    Charge your car in the safe zone's Charging Station before venturing to the wild.
-                  </p> 
-                </div> 
-              </li>
-
               <li class="intro-patch-item" style="--patch-color: #6fd0ff"> 
                 <span class="intro-patch-icon" aria-hidden="true">&#11088;</span> 
                 <div class="intro-patch-copy"> 
@@ -103,7 +91,7 @@
                     <span class="intro-patch-badge">New</span> 
                   </p> 
                   <p class="intro-patch-desc"> 
-                   Earn XP by killing sentient robots! Every 5 levels your car will evolve to a more battle ready battle car!
+                    Earn XP as you play, level up your character, and unlock new progression rewards as you reach higher levels. 
                   </p> 
                 </div> 
               </li>
@@ -129,7 +117,7 @@
                   </p>
                   <p class="intro-patch-desc">
                     Hit Shift on desktop or the mobile Turbo button for a burst
-                    of speed it has a short cooldown, so use it wisely.
+                    of speed &mdash; it has a short cooldown, so use it wisely.
                   </p>
                 </div>
               </li>
@@ -347,6 +335,15 @@
     </button>
 
     <div id="game-notice" hidden></div>
+
+    <div id="level-up-banner" hidden aria-hidden="true">
+      <div class="level-up-banner-star">✦</div>
+      <div class="level-up-banner-title">LEVEL UP</div>
+      <div id="level-up-banner-level">1</div>
+      <div id="level-up-banner-subtitle">VEHICLE UPGRADED</div>
+      <div id="level-up-banner-rewards"></div>
+    </div>
+
     <div id="damage-flash" hidden></div>
 
     <div id="death-screen" hidden>
@@ -388,6 +385,10 @@
 <div class="debug-actions">
   <button id="camera-toggle" type="button" disabled>
     Change camera · C
+  </button>
+
+  <button id="fullscreen-toggle" type="button" disabled>
+    Enter fullscreen
   </button>
 
   <button id="enable-audio" type="button" disabled>

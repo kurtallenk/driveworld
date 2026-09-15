@@ -92,6 +92,7 @@ export class TurboSystem {
     }
 
     const wasActive = this.active;
+    let justDeactivated = false;
 
     // Activate first, then advance elapsed -- so the very tick turbo turns
     // on already counts toward its duration budget instead of a free frame
@@ -116,11 +117,13 @@ export class TurboSystem {
       this.active = false;
       this.activeElapsed = 0;
       this.cooldownRemaining = this.config.cooldown;
+      justDeactivated = true;
     }
 
     return {
       active: this.active,
       justActivated: this.active && !wasActive,
+      justDeactivated,
       state: this.state,
       cooldownRemaining: this.cooldownRemaining,
       cooldownFraction: this.cooldownFraction,

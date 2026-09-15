@@ -15,8 +15,8 @@
 // ---------------------------------------------------------------------------
 
 // Levels at which a new evolution stage unlocks. Index into this array *is*
-// the stage number, so EVOLUTION_MILESTONES[3] === 6 means "stage 3 unlocks
-// at level 6". Extending progression later (level 12, 14, ...) is just
+// the stage number, so EVOLUTION_MILESTONES[3] === 15 means "stage 3 unlocks
+// at level 15". Extending progression later (level 25, 30, ...) is just
 // appending here plus one more entry in each config table below.
 export const EVOLUTION_MILESTONES = [1, 5, 10, 15, 20, 25];
 
@@ -44,11 +44,11 @@ function clampStage(stage) {
 // ---------------------------------------------------------------------------
 export const VEHICLE_EVOLUTION_CONFIG = [
   { stage: 0, level: 1, name: "Default", label: "DEFAULT" },
-  { stage: 1, level: 2, name: "Reinforced", label: "REINFORCED" },
-  { stage: 2, level: 4, name: "Armored", label: "ARMORED" },
-  { stage: 3, level: 6, name: "Heavy Combat", label: "HEAVY COMBAT" },
-  { stage: 4, level: 8, name: "Elite", label: "ELITE ARMORED" },
-  { stage: 5, level: 10, name: "Ultimate", label: "ULTIMATE" }
+  { stage: 1, level: 5, name: "Reinforced", label: "REINFORCED" },
+  { stage: 2, level: 10, name: "Armored", label: "ARMORED" },
+  { stage: 3, level: 15, name: "Heavy Combat", label: "HEAVY COMBAT" },
+  { stage: 4, level: 20, name: "Elite", label: "ELITE ARMORED" },
+  { stage: 5, level: 25, name: "Ultimate", label: "ULTIMATE" }
 ];
 
 export function getVehicleEvolutionConfig(stage) {
@@ -74,27 +74,27 @@ export const TURRET_EVOLUTION_CONFIG = [
     fireRateMultiplier: 1, damageMultiplier: 1, animationDuration: 1.6
   },
   {
-    stage: 1, level: 2, name: "Gatling Gun", label: "GATLING GUN",
+    stage: 1, level: 5, name: "Gatling Gun", label: "GATLING GUN",
     weaponType: "gatling", mounts: 1, barrelsPerMount: 4,
     fireRateMultiplier: 1.8, damageMultiplier: 0.6, animationDuration: 1.8
   },
   {
-    stage: 2, level: 4, name: "Dual Gun", label: "DUAL GUN TURRET",
+    stage: 2, level: 10, name: "Dual Gun", label: "DUAL GUN TURRET",
     weaponType: "dual", mounts: 2, barrelsPerMount: 1,
     fireRateMultiplier: 1, damageMultiplier: 0.65, animationDuration: 2.0
   },
   {
-    stage: 3, level: 6, name: "Dual Gatling", label: "DUAL GATLING GUN",
+    stage: 3, level: 15, name: "Dual Gatling", label: "DUAL GATLING GUN",
     weaponType: "dualGatling", mounts: 2, barrelsPerMount: 4,
     fireRateMultiplier: 1.8, damageMultiplier: 0.5, animationDuration: 2.3
   },
   {
-    stage: 4, level: 8, name: "Advanced Heavy Weapon", label: "ADVANCED HEAVY WEAPON",
+    stage: 4, level: 20, name: "Advanced Heavy Weapon", label: "ADVANCED HEAVY WEAPON",
     weaponType: "heavy", mounts: 1, barrelsPerMount: 3,
     fireRateMultiplier: 1.4, damageMultiplier: 1.6, animationDuration: 2.6
   },
   {
-    stage: 5, level: 10, name: "Ultimate Missile System", label: "ULTIMATE WEAPON",
+    stage: 5, level: 25, name: "Ultimate Missile System", label: "ULTIMATE WEAPON",
     weaponType: "missile", mounts: 1, barrelsPerMount: 0, missilePods: 2,
     fireRateMultiplier: 0.55, damageMultiplier: 3.4, animationDuration: 3.0
   }

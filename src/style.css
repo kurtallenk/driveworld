@@ -554,6 +554,118 @@ button:disabled {
   background: linear-gradient(90deg, #5d7188, #8a94a3);
 }
 
+.dash-battery-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.dash-battery-label {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  color: #9fb4c6;
+}
+
+.dash-battery-track {
+  flex: 1 1 auto;
+  height: 0.4rem;
+  min-width: 40px;
+  border-radius: 999px;
+  background: #ffffff1a;
+  overflow: hidden;
+  position: relative;
+}
+
+.dash-battery-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2fb8ff, #53d8ff);
+  transition: width 0.2s ease-out, background 0.2s ease;
+}
+
+.dash-battery-fill.dash-battery-fill--low {
+  background: linear-gradient(90deg, #e0a83c, #ffc24d);
+}
+
+.dash-battery-fill.dash-battery-fill--critical {
+  background: linear-gradient(90deg, #d6402f, #ff5a45);
+  animation: batteryCriticalPulse 0.9s ease-in-out infinite;
+}
+
+.dash-battery-fill.dash-battery-fill--empty {
+  background: linear-gradient(90deg, #4a2626, #6b3232);
+}
+
+.dash-battery-fill.dash-battery-fill--charging {
+  background: linear-gradient(90deg, #2fb8ff, #9be8ff);
+  box-shadow: 0 0 10px #53d8ffaa;
+  overflow: hidden;
+}
+
+/* Animated sweep highlight traveling across the fill while charging --
+   a single ::after gradient sweep driven by a CSS keyframe, no JS/canvas
+   needed for the dashboard's (DOM-based) battery readout. */
+.dash-battery-fill.dash-battery-fill--charging::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    #ffffffb0 45%,
+    transparent 65%
+  );
+  background-size: 60% 100%;
+  animation: batteryChargeSweep 1.4s linear infinite;
+}
+
+.dash-battery-percent {
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  color: #c7dbf6;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.4ch;
+  text-align: right;
+}
+
+@keyframes batteryChargeSweep {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(220%); }
+}
+
+@keyframes batteryCriticalPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.dash-pill-battery {
+  color: #53d8ff;
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+  transition: color 0.15s ease;
+}
+
+.dash-pill-battery--charging {
+  color: #9be8ff;
+  font-weight: 700;
+}
+
+.dash-pill-battery--low {
+  color: #ffc24d;
+}
+
+.dash-pill-battery--critical {
+  color: #ff5a45;
+  animation: batteryCriticalPulse 0.9s ease-in-out infinite;
+}
+
+.dash-pill-battery--empty {
+  color: #c97a7a;
+}
+
 .dash-secondary {
   display: flex;
   flex-direction: column;
@@ -804,6 +916,29 @@ button:disabled {
   background: linear-gradient(90deg, #4285f4, #87f4cc);
 }
 
+/* Brief celebration pulse on the level label and a flash sweep across the
+   XP bar, triggered by LevelUpEffect.trigger() (see Game.js) and removed
+   again once the animation finishes -- never left running. */
+.combat-row-label--pulse {
+  animation: levelLabelPulse 1.1s ease-out;
+}
+
+.combat-bar-xp--levelup {
+  animation: xpBarFlash 1.1s ease-out;
+}
+
+@keyframes levelLabelPulse {
+  0% { transform: scale(1); text-shadow: none; }
+  25% { transform: scale(1.35); color: #ffe28a; text-shadow: 0 0 10px #ffe28aaa; }
+  100% { transform: scale(1); text-shadow: none; }
+}
+
+@keyframes xpBarFlash {
+  0% { filter: brightness(1); }
+  30% { filter: brightness(1.9); }
+  100% { filter: brightness(1); }
+}
+
 #boss-hud {
   margin-top: 0.5rem;
   padding-top: 0.4rem;
@@ -844,6 +979,150 @@ button:disabled {
 }
 
 #game-notice[hidden] { display: none; }
+
+/* ==========================================================================
+   Level-up banner -- a distinct, more dramatic celebration than the plain
+   #game-notice pill, driven by LevelUpEffect (see gameplay/LevelUpEffect.js
+   and Game.js's onLevelUp). Sits outside #hud/#combat-hud, same as
+   #game-notice, so it still shows even in HUD-hidden mode (see the
+   body[data-hud-mode="hidden"] rule below). Styled as a high-tech vehicle
+   upgrade readout -- cyan/electric for a normal level-up, hotter
+   gold/orange for an evolution unlock.
+   ========================================================================== */
+
+#level-up-banner {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 0.9rem 2.2rem 1.1rem;
+  border-radius: 1rem;
+  border: 1px solid #53d8ff55;
+  background: radial-gradient(120% 160% at 50% 0%, #16212ee8 0%, #0c1623ea 75%);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 50px -8px #53d8ff66, 0 18px 40px -14px #000000a0;
+  pointer-events: none;
+  max-width: min(420px, calc(100vw - 2rem));
+  animation: levelUpBannerIn 2.6s ease-out both;
+  overflow: visible;
+}
+
+#level-up-banner[hidden] { display: none; }
+
+#level-up-banner::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 1.2rem;
+  border: 1px solid #53d8ff88;
+  opacity: 0;
+  animation: levelUpRingExpand 1s ease-out;
+  pointer-events: none;
+}
+
+.level-up-banner-star {
+  font-size: 1.1rem;
+  color: #9be8ff;
+  text-shadow: 0 0 14px #53d8ffcc;
+  margin-bottom: 0.1rem;
+}
+
+.level-up-banner-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  color: #cfe8ff;
+}
+
+#level-up-banner-level {
+  font-size: clamp(1.8rem, 6vw, 2.6rem);
+  font-weight: 800;
+  line-height: 1.05;
+  color: #fff;
+  text-shadow: 0 0 18px #53d8ffaa;
+  font-variant-numeric: tabular-nums;
+}
+
+#level-up-banner-subtitle {
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #9be8ff;
+}
+
+#level-up-banner-rewards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.5rem;
+  margin-top: 0.55rem;
+}
+
+.level-up-reward {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #baf5da;
+  background: #3ddc8422;
+  border: 1px solid #3ddc8455;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+
+/* Evolution unlock: hotter palette + a slightly larger glow -- the same
+   structure, a more dramatic skin. */
+#level-up-banner.level-up-banner--evolution {
+  border-color: #ffb35c66;
+  box-shadow: 0 0 70px -6px #ffb35c77, 0 18px 40px -14px #000000a0;
+  /* Evolution stays on screen a bit longer (matches LevelUpEffect's
+     longer EVOLUTION_DURATION timer) before fading, instead of reusing
+     the normal level-up's shorter fade timing. */
+  animation: levelUpBannerInEvolution 3.4s ease-out both;
+}
+
+#level-up-banner.level-up-banner--evolution::before {
+  border-color: #ffce7a99;
+}
+
+#level-up-banner.level-up-banner--evolution #level-up-banner-level {
+  color: #ffe9c2;
+  text-shadow: 0 0 22px #ffb35cbb;
+}
+
+#level-up-banner.level-up-banner--evolution #level-up-banner-subtitle {
+  color: #ffce7a;
+}
+
+#level-up-banner.level-up-banner--evolution .level-up-banner-star {
+  color: #ffce7a;
+  text-shadow: 0 0 16px #ffb35cdd;
+}
+
+@keyframes levelUpBannerIn {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.7); }
+  12% { opacity: 1; transform: translateX(-50%) scale(1.08); }
+  22% { transform: translateX(-50%) scale(1); }
+  85% { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) scale(0.96); }
+}
+
+@keyframes levelUpBannerInEvolution {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.7); }
+  10% { opacity: 1; transform: translateX(-50%) scale(1.1); }
+  18% { transform: translateX(-50%) scale(1); }
+  88% { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) scale(0.96); }
+}
+
+@keyframes levelUpRingExpand {
+  0% { opacity: 0.9; transform: scale(0.92); }
+  100% { opacity: 0; transform: scale(1.18); }
+}
 
 #damage-flash {
   position: fixed;
@@ -1285,6 +1564,10 @@ pre {
    back. */
 #hud-mode-toggle {
   position: fixed;
+  /* Explicit — this button gets moved inside #mobile-controls (which is
+     pointer-events: none) on touch devices, and pointer-events inherits,
+     so without this it silently becomes untappable. */
+  pointer-events: auto;
   top: calc(env(safe-area-inset-top, 0px) + 1rem);
   right: calc(env(safe-area-inset-right, 0px) + 1rem);
   margin: 0;
@@ -1966,10 +2249,13 @@ body[data-hud-mode="hidden"] #combat-hud {
 #chat-show[hidden] { display: none; }
 
 /* Touch driving controls own the bottom of the screen; keep chat from
-   sitting on top of the accelerator pedal or the shifter. */
+   sitting on top of the accelerator pedal or the shifter. Docked below
+   #hud-mode-toggle (also pinned top-right, at top: 1rem) rather than on
+   top of it — the two would otherwise land in exactly the same spot,
+   with chat's higher z-index hiding the HUD toggle underneath it. */
 body.mobile-controls-active #chat-panel,
 body.mobile-controls-active #chat-show {
-  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  top: calc(env(safe-area-inset-top, 0px) + 1rem + 2.4rem);
   right: calc(env(safe-area-inset-right, 0px) + 1rem);
   bottom: auto;
 }
@@ -2004,19 +2290,42 @@ body.mobile-controls-active #chat-panel.chat-size-expanded {
    The keyboard panel never applies on touch, since MobileControls owns
    input in that mode. */
 body.mobile-controls-active #hud {
-  left: calc(
+  /* left: calc(
     env(safe-area-inset-left, 0px) + 1rem +
-    clamp(140px, 34vw, 220px) + 0.6rem
+    (2 * clamp(76px, 15vw, 108px)) + clamp(0.6rem, 2vw, 1rem) + 0.6rem
   );
   right: calc(
     env(safe-area-inset-right, 0px) + 1rem +
-    clamp(70px, 20vw, 100px) + 0.6rem
+    clamp(70px, 20vw, 100px) + 0.6rem +
+    clamp(64px, 20vw, 88px) + 0.6rem
   );
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem); */
+
+  bottom: 130px;
+  
   transform: none;
   align-items: center;
   max-width: none;
 }
+
+/* Portrait doesn't have the width to squeeze the dashboard between the
+   steering cluster and the pedals/turbo columns the way landscape does
+   (left-clearance + right-clearance can add up to more than the screen
+   is wide). Instead, stop sharing the row with them: go full-width with
+   small side margins, and sit above the tallest bottom-row column
+   (the pedal stack, up to 3 pedals in H-shifter mode) instead of
+   beside it. */
+/* @media (orientation: portrait) {
+  body.mobile-controls-active #hud {
+    left: calc(env(safe-area-inset-left, 0px) + 1rem);
+    right: calc(env(safe-area-inset-right, 0px) + 1rem);
+    bottom: calc(
+      env(safe-area-inset-bottom, 0px) + 1rem +
+      (3 * clamp(72px, 15vh, 108px)) +
+      (2 * clamp(0.5rem, 1.6vh, 0.8rem)) + 0.8rem
+    );
+  }
+} */
 
 body.mobile-controls-active .kbd-panel,
 body.mobile-controls-active .dash-secondary,
@@ -2111,8 +2420,21 @@ body.mobile-controls-active .dash-engine-pill {
    it's already anchored to the same bottom baseline as the controls. */
 @media (max-height: 480px) and (orientation: landscape) {
   body.mobile-controls-active #hud {
-    max-width: clamp(66px, 17vh, 84px);
+    max-width: clamp(66px, 17vh, 84px) !important;
   }
+
+  body.mobile-controls-active #hud {
+  left: calc(
+    env(safe-area-inset-left, 0px) + 1rem +
+    (2 * clamp(76px, 15vw, 108px)) + clamp(0.6rem, 2vw, 1rem) + 0.6rem
+  );
+  right: calc(
+    env(safe-area-inset-right, 0px) + 1rem +
+    clamp(70px, 20vw, 100px) + 0.6rem +   /* pedals column */
+    clamp(64px, 20vw, 88px) + 0.6rem      /* turbo/turret column */
+  );
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+}
 
   body.mobile-controls-active:has(.mc-shifter:not([hidden])) #hud {
     bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(120px, 40vh, 170px));
@@ -2164,95 +2486,167 @@ body.mobile-controls-active .dash-engine-pill {
 
 #mobile-controls[hidden] { display: none; }
 
-.mc-steering,
-.mc-right-cluster,
-.mc-shifter {
+.mc-steer-cluster,
+.mc-shifter,
+.mc-corner-actions {
   position: fixed;
   pointer-events: none;
 }
 
-/* --- Steering -------------------------------------------------------- */
+/* --- Steering: large held LEFT / RIGHT buttons ------------------------ */
+/* Two large held buttons anchor to the same bottom-left zone the old
+   drag-joystick used to, sized with clamp() so they scale across
+   16:9 -> 20:9 phones and wider tablets instead of one fixed size. */
 
-.mc-steering {
+.mc-steer-cluster {
   left: calc(env(safe-area-inset-left, 0px) + 1rem);
   bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
-  width: clamp(140px, 34vw, 220px);
-  height: clamp(140px, 34vw, 220px);
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(0.6rem, 2vw, 1rem);
 }
 
-.mc-steering-track {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 999px;
-  border: 2px solid #ffffff2e;
-  background: radial-gradient(circle at 50% 40%, #17263880, #0c1623cc);
+.mc-steer-btn {
+  display: grid;
+  place-items: center;
+  width: clamp(76px, 15vw, 108px);
+  height: clamp(88px, 20vh, 132px);
+  border-radius: 1.1rem;
+  border: 2px solid #5fd9ff4d;
+  background: linear-gradient(180deg, #17263880, #0c1623cc);
   backdrop-filter: blur(6px);
-  box-shadow: inset 0 0 0 8px #ffffff08, inset 0 0 30px #00000050;
+  box-shadow: inset 0 0 0 1px #ffffff0d, inset 0 0 24px #00000050, 0 8px 20px -8px #000a;
+  color: #eef4ffcc;
   pointer-events: auto;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  transition: background 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
 }
 
-.mc-steering-knob {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+.mc-steer-icon {
   width: 46%;
   height: 46%;
-  margin: -23% 0 0 -23%;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #33506c, #1c2e40);
-  border: 1px solid #ffffff33;
-  box-shadow: 0 6px 18px #0007;
-  transition: box-shadow 0.15s ease;
-  will-change: transform;
+  display: grid;
+  place-items: center;
 }
 
-/* Grip hub + crossbar spokes, purely decorative — gives the knob the
-   silhouette of a small steering wheel rather than a plain disc. */
-.mc-steering-knob::before {
-  content: "";
-  position: absolute;
-  inset: 32%;
-  border-radius: 999px;
-  background: radial-gradient(circle at 38% 32%, #4a6f8f, #14212e);
-  box-shadow: inset 0 0 6px #0009, 0 1px 0 #ffffff1a;
+.mc-steer-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
-.mc-steering-knob::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 10%;
-  right: 10%;
-  height: 2px;
-  background: #ffffff26;
-  transform: translateY(-50%);
+/* Pressed/active state: brighter cyan border + glow, matching the
+   turret/turbo/pedal "mc-pressed" treatment used everywhere else in
+   this file so every touch control gives the same feedback language. */
+.mc-steer-btn.mc-pressed {
+  border-color: #5fd9ffcc;
+  background: linear-gradient(180deg, #16283a, #0e1c2b);
+  box-shadow: inset 0 0 0 1px #5fd9ff33, inset 0 0 24px #5fd9ff22, 0 0 22px -4px #5fd9ff66;
+  color: #eef4ff;
 }
 
-.mc-steering-track:active .mc-steering-knob {
-  box-shadow: 0 0 0 6px #7de2bf33;
+@media (hover: hover) {
+  .mc-steer-btn:hover { border-color: #5fd9ff80; }
 }
 
-/* --- Right-side cluster: turret button stacked above the pedals ------- */
-/* Both share one fixed anchor so they reflow together as a single
-   bottom-right zone instead of needing two separately-tuned positions. */
+/* --- Corner actions: fullscreen + camera (mobile landscape) ----------- */
+/* Sits top-right, stacked below #hud-mode-toggle + the collapsed chat
+   button that already occupy that corner (see the
+   body.mobile-controls-active #chat-panel rule below, which reserves the
+   same "+1rem then +2.4rem" column) so this never lands on top of
+   either. Only shown once touch controls are active — desktop keeps
+   using the settings-menu entries for both. */
 
-.mc-right-cluster {
-  right: calc(env(safe-area-inset-right, 0px) + 1rem);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
-  display: flex;
+.mc-corner-actions {
+  /* top: calc(env(safe-area-inset-top, 0px) + 5.6rem);
+  right: calc(env(safe-area-inset-right, 0px) + 1rem); */
+
+  top: 0;
+  right: 50%;
+  transform: translateX(50%);
+  display: none;
   flex-direction: column;
+  gap: 0.5rem;
+}
+
+body.mobile-controls-active .mc-corner-actions {
+  display: flex;
+  flex-direction: row;
+}
+
+.mc-corner-btn {
+  display: grid;
+  place-items: center;
+  width: clamp(2.4rem, 6vw, 2.9rem);
+  height: clamp(2.4rem, 6vw, 2.9rem);
+  padding: 0;
+  border-radius: 0.65rem;
+  border: 1px solid #ffffff22;
+  background: #101a2680;
+  color: #c7dbf6dd;
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+  touch-action: manipulation;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.mc-corner-btn svg {
+  width: 58%;
+  height: 58%;
+}
+
+.mc-corner-btn:active,
+.mc-corner-btn--active {
+  background: #1a2838a0;
+  border-color: #5fd9ff88;
+  color: #eef4ff;
+}
+
+
+.mc-hud-pedal_clusters{
+  display: flex;
+  height: 100px;
+
+  flex-direction: column-reverse;
+
+  position: fixed;
+
+  gap: 0;
+
+   right: 10px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+
+  
+}
+
+/* --- Action cluster: handbrake + turbo + turret ----------------------- */
+/* Turbo/turret share one fixed anchor immediately to the left of the
+   pedal stack (same width formula the mobile HUD offset below uses) so
+   they reflow together as a column instead of needing two separately-
+   tuned positions. The handbrake lives in the same group in markup, but
+   keeps its own independent fixed anchor (see .mc-handbrake-btn below)
+   so it never shares a hitbox with turbo/turret or the pedals. */
+
+.mc-action-cluster {
+  /* right: calc(
+    env(safe-area-inset-right, 0px) + 1rem +
+    clamp(70px, 20vw, 100px) + 0.6rem
+  );
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem); */
+  display: flex;
+  flex-direction: column-reverse;
   align-items: center;
   gap: clamp(0.6rem, 1.8vh, 1rem);
+  transform: scale(0.8);
 }
 
 /* --- Pedals ------------------------------------------------------------ */
 
 .mc-pedals {
+  /* right: calc(env(safe-area-inset-right, 0px) + 1rem);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem); */
   display: flex;
   flex-direction: column-reverse;
   gap: clamp(0.5rem, 1.6vh, 0.8rem);
@@ -2340,16 +2734,21 @@ body.mobile-controls-active .dash-engine-pill {
 }
 
 /* --- Handbrake ----------------------------------------------------------- */
-/* Deliberately NOT part of .mc-pedals or .mc-right-cluster — it has its
-   own fixed anchor on the right edge, vertically centered, so it never
-   shares a hitbox with the pedals/turbo/turret below it and stays
-   reachable with a thumb-flick up from the pedal area. */
+/* Lives in the markup as a child of .mc-action-cluster (grouped there with
+   turbo/turret for logical/organizational purposes), but keeps its own
+   independent fixed anchor on the right edge, vertically centered, so it
+   never shares a hitbox with the pedals/turbo/turret and stays reachable
+   with a thumb-flick up from the pedal area. */
 
 .mc-handbrake-btn {
-  position: fixed;
-  right: calc(env(safe-area-inset-right, 0px) + 0.6rem);
-  top: 45%;
-  transform: translateY(-50%);
+  position: relative;
+  /* Pushed further in than other edge controls (was 0.6rem) — a button
+     this close to the raw screen edge sits inside the OS's edge-swipe
+     gesture zone (back gesture / app switcher), especially in landscape,
+     so taps here were getting intercepted by the system instead of
+     reaching the page. */
+  /* right: calc(env(safe-area-inset-right, 0px) + 1.4rem); */
+  /* top: 10%; */
   border-color: #f5745555;
 }
 
@@ -2635,6 +3034,14 @@ body.mobile-controls-active .dash-engine-pill {
     padding: 0.55rem 1rem;
   }
 
+  #level-up-banner {
+    padding: 0.7rem 1.4rem 0.9rem;
+    max-width: calc(100vw - 1.6rem);
+  }
+
+  #level-up-banner-level { font-size: clamp(1.5rem, 8vw, 2rem); }
+  .level-up-reward { font-size: 0.58rem; padding: 0.12rem 0.5rem; }
+
   .death-screen-inner {
     padding: 1.5rem 1.6rem;
     max-width: calc(100vw - 2rem);
@@ -2704,9 +3111,13 @@ body.mobile-controls-active .dash-engine-pill {
     font-size: 0.68rem;
   }
 
-  .mc-steering {
-    width: clamp(120px, 38vw, 170px);
-    height: clamp(120px, 38vw, 170px);
+  .mc-steer-btn {
+    width: clamp(64px, 26vw, 92px);
+    height: clamp(76px, 17vh, 108px);
+  }
+
+  .mc-steer-cluster {
+    gap: 0.5rem;
   }
 
   .mc-turret-btn {
@@ -2749,13 +3160,38 @@ body.mobile-controls-active .dash-engine-pill {
   .intro-patch { max-height: 40vh; padding: 0.8rem; }
   .intro-drive-btn { padding: 0.7rem 1.2rem; }
 
+  
+
   .mc-pedal {
     height: clamp(56px, 26vh, 76px);
+    padding: 10px;
   }
 
-  .mc-steering {
-    width: clamp(110px, 24vh, 160px);
-    height: clamp(110px, 24vh, 160px);
+  .mc-steer-btn {
+    width: clamp(72px, 13vw, 100px);
+    height: clamp(64px, 24vh, 96px);
+  }
+
+  .mc-steer-cluster {
+    gap: clamp(0.4rem, 1.4vh, 0.7rem);
+  }
+
+  /* Corner cluster sits lower on tall/normal phones (see the base rule
+     above) purely to clear #hud-mode-toggle + the collapsed chat button
+     stacked above it; here there's little vertical room to spare, so it
+     switches to a row and moves up closer to the top edge instead. */
+  .mc-corner-actions {
+    top: calc(env(safe-area-inset-top, 0px) + 3.4rem);
+    flex-direction: row;
+  }
+
+  .mc-hud-pedal_clusters{ flex-direction: row-reverse; gap: 5px;}
+
+  .mc-action-cluster { transform: none; flex-direction: row;}
+
+  .mc-corner-btn {
+    width: 2.1rem;
+    height: 2.1rem;
   }
 
   .mc-turret-btn {
@@ -2768,7 +3204,7 @@ body.mobile-controls-active .dash-engine-pill {
     height: clamp(48px, 16vh, 64px);
   }
 
-  .mc-right-cluster {
+  .mc-action-cluster {
     gap: clamp(0.4rem, 1.4vh, 0.7rem);
   }
 

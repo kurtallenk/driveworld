@@ -337,6 +337,22 @@ export class AudioManager {
       );
 
     /*
+     * CHARGING LOOP
+     *
+     * A quiet, subtle electrical hum used only while the vehicle is
+     * actively charging (see update()'s `charging` flag). Created once
+     * here, alongside the other continuous layers, and just ramped up/down
+     * per frame -- never a new node per charging session.
+     */
+    this.chargingLoop =
+      this.createNoiseLayer(
+        "bandpass",
+        2200,
+        4,
+        this.effectsBus
+      );
+
+    /*
      * If the browser initially creates the context
      * in a suspended state, that's okay.
      *
@@ -709,7 +725,8 @@ export class AudioManager {
     surface,
     driverView,
     lugging,
-    slip = 0
+    slip = 0,
+    charging = false
   }) {
     if (
       !this.context ||
@@ -915,6 +932,23 @@ export class AudioManager {
     );
 
     /*
+     * CHARGING LOOP
+     *
+     * Subtle electrical shimmer, only audible while `charging` is true.
+     * Frequency wobbles gently so it doesn't read as a flat drone.
+     */
+    set(
+      this.chargingLoop.gain.gain,
+      charging ? 0.018 : 0,
+      0.15
+    );
+
+    set(
+      this.chargingLoop.filter.frequency,
+      2200 + Math.sin(now * 3) * 220
+    );
+
+    /*
      * GEAR SHIFT SOUND
      */
     if (
@@ -927,5 +961,179 @@ export class AudioManager {
 
     this.previousGear =
       gear;
+  }
+
+  // ---------------------------------------------------------------------
+  // One-shot feedback sounds for battery, charging, and leveling. These
+  // are all edge-triggered by the caller (Game.js detects the actual
+  // state transition -- not-charging -> charging, battery reaching a new
+  // threshold, level-up firing) so none of them can spam every frame; each
+  // method here just plays a single short envelope through playToneEffect
+  // and returns, reusing that helper rather than duplicating oscillator
+  // setup.
+  // ---------------------------------------------------------------------
+
+  _guarded() {
+    return (
+      this.context &&
+      this.enabled &&
+      this.context.state === "running" &&
+      !document.hidden &&
+      document.hasFocus()
+    );
+  }
+
+  playChargingStart() {
+    if (!this._guarded()) return;
+    this.playToneEffect({
+      startFrequency: 220,
+      endFrequency: 720,
+      duration: 0.22,
+      volume: 0.04,
+      type: "sine",
+      destination: this.effectsBus
+    });
+  }
+
+  playChargingComplete() {
+    if (!this._guarded()) return;
+    // A short two-note rising confirmation chime.
+    this.playToneEffect({
+      startFrequency: 520,
+      endFrequency: 780,
+      duration: 0.14,
+      volume: 0.045,
+      type: "triangle",
+      destination: this.effectsBus
+    });
+    setTimeout(() => {
+      this.playToneEffect({
+        startFrequency: 780,
+        endFrequency: 1040,
+        duration: 0.18,
+        volume: 0.045,
+        type: "triangle",
+        destination: this.effectsBus
+      });
+    }, 90);
+  }
+
+  // kind: "low" | "critical" | "empty"
+  playBatteryWarning(kind) {
+    if (!this._guarded()) return;
+
+    if (kind === "empty") {
+      this.playToneEffect({
+        startFrequency: 180,
+        endFrequency: 60,
+        duration: 0.4,
+        volume: 0.05,
+        type: "sawtooth",
+        destination: this.effectsBus
+      });
+    } else if (kind === "critical") {
+      this.playToneEffect({
+        startFrequency: 900,
+        endFrequency: 500,
+        duration: 0.09,
+        volume: 0.04,
+        type: "square",
+        destination: this.effectsBus
+      });
+    } else {
+      this.playToneEffect({
+        startFrequency: 700,
+        endFrequency: 450,
+        duration: 0.14,
+        volume: 0.03,
+        type: "sine",
+        destination: this.effectsBus
+      });
+    }
+  }
+
+  playXpPickup() {
+    if (!this._guarded()) return;
+    this.playToneEffect({
+      startFrequency: 880,
+      endFrequency: 1180,
+      duration: 0.07,
+      volume: 0.02,
+      type: "sine",
+      destination: this.effectsBus
+    });
+  }
+
+  playLevelUp({ evolution = false } = {}) {
+    if (!this._guarded()) return;
+
+    this.playToneEffect({
+      startFrequency: 440,
+      endFrequency: 880,
+      duration: 0.18,
+      volume: evolution ? 0.07 : 0.05,
+      type: "triangle",
+      destination: this.effectsBus
+    });
+
+    setTimeout(() => {
+      this.playToneEffect({
+        startFrequency: 880,
+        endFrequency: evolution ? 1760 : 1320,
+        duration: evolution ? 0.32 : 0.2,
+        volume: evolution ? 0.08 : 0.05,
+        type: evolution ? "sawtooth" : "triangle",
+        destination: this.effectsBus
+      });
+    }, 100);
+
+    if (evolution) {
+      setTimeout(() => {
+        this.playToneEffect({
+          startFrequency: 220,
+          endFrequency: 110,
+          duration: 0.3,
+          volume: 0.06,
+          type: "sine",
+          destination: this.effectsBus
+        });
+      }, 60);
+    }
+  }
+
+  playTurboStart() {
+    if (!this._guarded()) return;
+    this.playToneEffect({
+      startFrequency: 90,
+      endFrequency: 320,
+      duration: 0.16,
+      volume: 0.045,
+      type: "sawtooth",
+      destination: this.effectsBus
+    });
+  }
+
+  playTurboEnd() {
+    if (!this._guarded()) return;
+    this.playToneEffect({
+      startFrequency: 260,
+      endFrequency: 90,
+      duration: 0.14,
+      volume: 0.03,
+      type: "sine",
+      destination: this.effectsBus
+    });
+  }
+
+  playEnemyDestroyed(isBoss = false) {
+    if (!this._guarded()) return;
+    this.playToneEffect({
+      startFrequency: isBoss ? 260 : 340,
+      endFrequency: isBoss ? 40 : 90,
+      duration: isBoss ? 0.5 : 0.22,
+      volume: isBoss ? 0.09 : 0.045,
+      type: "sawtooth",
+      destination: this.effectsBus
+    });
   }
 }

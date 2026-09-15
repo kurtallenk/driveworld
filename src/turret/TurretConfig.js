@@ -168,7 +168,7 @@ export const PLAYER_CONFIG = {
 };
 
 export const LEVEL_CONFIG = {
-  baseXP: 50,
+  baseXP: 20,
   curveExponent: 1.35 // xpRequired(level) = baseXP * level^curveExponent
 };
 

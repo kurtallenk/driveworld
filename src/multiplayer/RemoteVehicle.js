@@ -148,13 +148,22 @@ export class RemoteVehicle {
     }
 
     // ---- Nameplate ------------------------------------------------------------
+    const NAMEPLATE_WIDTH = 300;
+    const NAMEPLATE_HEIGHT = 80;
+    // Leave real padding on both sides of the canvas -- the previous
+    // threshold here (460) was wider than the canvas itself (300), so the
+    // shrink-to-fit loop below never actually triggered until the text was
+    // already being clipped by the canvas edge (see e.g. "Kurt Allen Kinch").
+    const NAMEPLATE_MAX_TEXT_WIDTH = NAMEPLATE_WIDTH - 48;
+    const NAMEPLATE_MIN_FONT_SIZE = 16;
+
     const canvas = document.createElement("canvas");
-    canvas.width = 300;
-    canvas.height = 80;
+    canvas.width = NAMEPLATE_WIDTH;
+    canvas.height = NAMEPLATE_HEIGHT;
 
     const context = canvas.getContext("2d");
     context.fillStyle = "#09131ed9";
-    context.fillRect(0, 0, 300, 80);
+    context.fillRect(0, 0, NAMEPLATE_WIDTH, NAMEPLATE_HEIGHT);
     context.fillStyle = "#ffffff";
     context.textAlign = "center";
 
@@ -163,14 +172,28 @@ export class RemoteVehicle {
     context.font = `bold ${fontSize}px sans-serif`;
 
     while (
-      context.measureText(this.name).width > 460 &&
-      fontSize > 18
+      context.measureText(this.name).width > NAMEPLATE_MAX_TEXT_WIDTH &&
+      fontSize > NAMEPLATE_MIN_FONT_SIZE
     ) {
       fontSize -= 2;
       context.font = `bold ${fontSize}px sans-serif`;
     }
 
-    context.fillText(this.name, 150, 50);
+    // Safety net for the rare name that still doesn't fit even at the
+    // smallest font size -- truncate with an ellipsis instead of letting
+    // the canvas edge clip it.
+    let displayName = this.name;
+    if (context.measureText(displayName).width > NAMEPLATE_MAX_TEXT_WIDTH) {
+      while (
+        displayName.length > 1 &&
+        context.measureText(`${displayName}…`).width > NAMEPLATE_MAX_TEXT_WIDTH
+      ) {
+        displayName = displayName.slice(0, -1);
+      }
+      displayName += "…";
+    }
+
+    context.fillText(displayName, NAMEPLATE_WIDTH / 2, 50);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;

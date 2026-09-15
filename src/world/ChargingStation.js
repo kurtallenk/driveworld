@@ -182,6 +182,40 @@ export function createChargingStation(
   poleBody.surface = "asphalt";
   physics.addBody(poleBody);
 
+  // ---- Charging feedback (coil pulse + energy particles) -----------------
+  // Purely cosmetic, driven by update(dt, charging, carPosition) below.
+  // Everything here is allocated once, right now, and only ever mutated
+  // per frame -- no new geometries/materials while charging is active.
+  const baseCoilEmissive = glowMaterial.emissiveIntensity;
+  const baseZoneRingEmissive = zoneRing.material.emissiveIntensity;
+  const baseGlowLightIntensity = glowLight.intensity;
+
+  const coilWorldPos = new THREE.Vector3(
+    x + stationOffset.x, y + 2.35, z + stationOffset.z
+  );
+
+  const PARTICLE_COUNT = 6;
+  const particleGeometry = new THREE.SphereGeometry(0.07, 8, 8);
+  const particleMaterial = new THREE.MeshBasicMaterial({
+    color: 0x9dffdb,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false
+  });
+
+  const particlesGroup = new THREE.Group();
+  scene.add(particlesGroup);
+
+  const particles = [];
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const mesh = new THREE.Mesh(particleGeometry, particleMaterial.clone());
+    mesh.visible = false;
+    particlesGroup.add(mesh);
+    particles.push({ mesh, t: i / PARTICLE_COUNT });
+  }
+
+  let chargeAnimTime = 0;
+
   const zoneWorldPosition = new THREE.Vector2(x, z);
   const scratch = new THREE.Vector2();
 
@@ -197,6 +231,39 @@ export function createChargingStation(
     isInZone(pointLike) {
       scratch.set(pointLike.x, pointLike.z);
       return scratch.distanceTo(zoneWorldPosition) <= config.zoneRadius;
+    },
+
+    // Call once per rendered frame (not per physics substep -- this is
+    // pure visual feedback) while the vehicle may be charging. carPosition
+    // is only needed while charging is true; pass null/undefined
+    // otherwise. Makes it obvious at a glance that "my car is charging
+    // right now": the coil brightens and pulses, and a handful of small
+    // energy particles travel from the coil toward the vehicle.
+    update(dt, charging, carPosition) {
+      const step = Math.max(0, Math.min(0.1, Number.isFinite(dt) ? dt : 0));
+      chargeAnimTime += step;
+
+      const pulse = charging
+        ? Math.sin(chargeAnimTime * 6) * 0.5 + 0.5
+        : 0;
+
+      glowMaterial.emissiveIntensity = baseCoilEmissive + (charging ? pulse * 1.3 : 0);
+      glowLight.intensity = baseGlowLightIntensity + (charging ? pulse * 1.1 : 0);
+      zoneRing.material.emissiveIntensity =
+        baseZoneRingEmissive + (charging ? pulse * 0.8 : 0);
+
+      for (const particle of particles) {
+        if (!charging || !carPosition) {
+          particle.mesh.visible = false;
+          continue;
+        }
+
+        particle.t = (particle.t + step * 0.55) % 1;
+        particle.mesh.visible = true;
+        particle.mesh.position.lerpVectors(coilWorldPos, carPosition, particle.t);
+        particle.mesh.position.y += Math.sin(particle.t * Math.PI) * 0.3 + 0.2;
+        particle.mesh.material.opacity = (1 - particle.t) * 0.85;
+      }
     }
   };
 }

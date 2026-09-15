@@ -22,6 +22,7 @@ import { PLAYER_CONFIG } from "../turret/TurretConfig.js";
 import { PlayerHealth } from "../gameplay/PlayerHealth.js";
 import { LevelSystem } from "../gameplay/LevelSystem.js";
 import { HealthBar } from "../gameplay/HealthBar.js";
+import { LevelUpEffect } from "../gameplay/LevelUpEffect.js";
 import { MANUAL_CONFIG } from "../vehicle/ManualDrivetrain.js";
 import { TurboSystem, applyTurboToControls } from "../vehicle/TurboSystem.js";
 import { ExhaustSystem } from "../vehicle/ExhaustSystem.js";
@@ -29,6 +30,7 @@ import { VehicleDestruction } from "../vehicle/VehicleDestruction.js";
 import { getEvolutionStage, getVehicleEvolutionConfig, getTurretEvolutionConfig } from "../gameplay/EvolutionConfig.js";
 import { BatterySystem, BATTERY_CONFIG, applyBatteryToControls } from "../vehicle/BatterySystem.js";
 import { createChargingStation } from "../world/ChargingStation.js";
+import { FullscreenManager } from "../ui/FullscreenManager.js";
 
 // Tachometer scale for the dashboard's RPM arc. Redline comes straight
 // from the manual drivetrain's own config, so the gauge always agrees
@@ -169,6 +171,11 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     this.batteryStatusElement = document.querySelector("#battery-status");
     this.batteryFillElement = document.querySelector("#dash-battery-fill");
     this.batteryPercentElement = document.querySelector("#dash-battery-percent");
+    // Edge-detection for charging start/stop audio (see the HUD update
+    // block below) -- distinct from battery.onStateChange's state-machine
+    // transitions, since "charging" can start/stop without crossing a
+    // low/critical/full threshold (e.g. leaving the zone mid-charge).
+    this._wasCharging = false;
 
     // --- Player HP / leveling ------------------------------------------
     this.playerHealth = new PlayerHealth();
@@ -179,8 +186,12 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     // every single level-up (e.g. level 2->3 keeps stage 1).
     this.vehicleEvolutionStage = 0;
 
+    // Compact stacked vehicle status display: HP on top, battery directly
+    // underneath, both at roughly half the old bar's width (see
+    // HealthBar.js's showBattery mode) -- one world-space widget instead
+    // of a separate floating battery HUD.
     this.playerHealthBar = new HealthBar(this.scene, {
-      width: 2.0, height: 0.2, yOffset: 2.3
+      width: 1.0, height: 0.16, yOffset: 2.3, showBattery: true
     });
 
     this.damageFlashAmount = 0;
@@ -193,6 +204,15 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     this.playerXpFillElement = document.querySelector("#player-xp-fill");
     this.playerXpTextElement = document.querySelector("#player-xp-text");
     this.bossHudElement = document.querySelector("#boss-hud");
+
+    this.levelUpEffect = new LevelUpEffect({
+      bannerElement: document.querySelector("#level-up-banner"),
+      levelElement: document.querySelector("#level-up-banner-level"),
+      subtitleElement: document.querySelector("#level-up-banner-subtitle"),
+      rewardsElement: document.querySelector("#level-up-banner-rewards"),
+      combatLevelLabel: this.playerLevelLabelElement,
+      combatXpFill: this.playerXpFillElement
+    });
 
     // --- Death screen (full destruction sequence UI) --------------------
     this.deathScreenElement = document.querySelector("#death-screen");
@@ -258,31 +278,39 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     };
 
     this.levelSystem.onLevelUp = level => {
+      // Only ever list a reward below if it actually happened this
+      // level-up -- never an invented/always-shown entry.
+      const rewards = [`+ MAX HP`];
+
       this.playerHealth.addMaxHealth(PLAYER_CONFIG.hpPerLevel);
 
       if (level % PLAYER_CONFIG.turretDamageLevelInterval === 0) {
         this.turret.damageMultiplier += PLAYER_CONFIG.turretDamageBonusPerInterval;
+        rewards.push("+ TURRET POWER");
       }
 
       const newStage = getEvolutionStage(level);
-      if (newStage !== this.vehicleEvolutionStage) {
+      const evolved = newStage !== this.vehicleEvolutionStage;
+
+      if (evolved) {
         this.vehicleEvolutionStage = newStage;
         this.vehicle.setEvolutionStage(newStage);
         this.turret.setEvolutionStage(newStage);
         this.exhaust.setEvolutionStage(newStage);
-
-        const vehicleConfig = getVehicleEvolutionConfig(newStage);
-        const turretConfig = getTurretEvolutionConfig(newStage);
-        // Single combined notice -- showNotice() replaces text/timer rather
-        // than queuing, so firing it twice in the same frame (once per
-        // system) would just drop the first message.
-        this.showNotice(
-          `LEVEL ${level}! VEHICLE EVOLUTION: ${vehicleConfig.label} / ${turretConfig.label}`,
-          3
-        );
-      } else {
-        this.showNotice(`★ LEVEL UP! ★  LEVEL ${level}`, 2.5);
+        rewards.push("VEHICLE EVOLUTION");
       }
+
+      const vehicleConfig = getVehicleEvolutionConfig(newStage);
+      const turretConfig = getTurretEvolutionConfig(newStage);
+
+      this.levelUpEffect.trigger({
+        level,
+        rewards,
+        evolution: evolved,
+        evolutionLabel: `${vehicleConfig.label} / ${turretConfig.label}`
+      });
+
+      this.audio.playLevelUp({ evolution: evolved });
     };
 
     this.targetSystem = new TargetSystem(
@@ -291,6 +319,8 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
 
     this.targetSystem.onEnemyDestroyed = target => {
       this.levelSystem.addXP(target.xpReward);
+      this.audio.playEnemyDestroyed(target.kind === "boss");
+      this.audio.playXpPickup();
 
       if (target.kind === "boss") {
         this.showNotice(`BOSS DEFEATED! +${target.xpReward} XP`, 3);
@@ -306,6 +336,8 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     // were damaging the same enemy (requirement #14's "shared damage" case).
     this.handleEnemyKilled = message => {
       this.levelSystem.addXP(message.xpReward);
+      this.audio.playEnemyDestroyed(message.kind === "boss");
+      this.audio.playXpPickup();
 
       if (message.kind === "boss") {
         this.showNotice(`BOSS DEFEATED! +${message.xpReward} XP`, 3);
@@ -342,10 +374,13 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
         // already uses to interrupt an in-progress deploy/cut a live one.
         this.turret.forceRetract();
         this.showNotice("BATTERY DEPLETED — TURRET OFFLINE · TURBO DISABLED", 3);
+        this.audio.playBatteryWarning("empty");
       } else if (newState === "critical") {
         this.showNotice("CRITICAL BATTERY — HEAD TO A CHARGING STATION", 2.5);
+        this.audio.playBatteryWarning("critical");
       } else if (newState === "low") {
         this.showNotice("LOW BATTERY", 2);
+        this.audio.playBatteryWarning("low");
       } else if (newState === "full" && oldState !== "full") {
         this.showNotice("BATTERY FULLY CHARGED", 1.5);
       }
@@ -402,6 +437,39 @@ audioButton.disabled = false;
 cameraButton.addEventListener("click", () => {
   this.cameraRig.toggle();
 });
+
+// Fullscreen: one FullscreenManager instance is the single source of
+// truth for fullscreen state. The settings-menu button and the mobile
+// landscape corner button (wired up later, once this.mobileControls
+// exists) both just call fullscreen.toggle() / read the onChange below —
+// neither owns its own fullscreen logic.
+const fullscreenButton = document.querySelector("#fullscreen-toggle");
+
+this.fullscreen = new FullscreenManager({
+  onChange: active => {
+    if (fullscreenButton) {
+      fullscreenButton.textContent = active ? "Exit fullscreen" : "Enter fullscreen";
+    }
+    this.mobileControls?.setFullscreenActive(active);
+
+    // The viewport can change size (mobile browser chrome hides/shows,
+    // device pixel dimensions differ from the pre-fullscreen layout).
+    // Reuse the existing single resize handler instead of adding a
+    // second one; the rAF lets the browser finish the transition first.
+    requestAnimationFrame(() => this.resize());
+  }
+});
+
+if (fullscreenButton) {
+  if (this.fullscreen.isSupported) {
+    fullscreenButton.disabled = false;
+    fullscreenButton.addEventListener("click", () => this.fullscreen.toggle());
+  } else {
+    // Gracefully degrade on browsers/devices without the Fullscreen API
+    // (e.g. iPhone Safari) instead of offering a control that can't work.
+    fullscreenButton.remove();
+  }
+}
 
 audioButton.addEventListener("click", async () => {
   try {
@@ -616,6 +684,15 @@ if (controllerButton) {
 );
 
     this.mobileControls = new MobileControls(this.input);
+
+    // The mobile landscape corner cluster (fullscreen + camera) calls
+    // back into the same systems the desktop settings menu uses — it
+    // never owns fullscreen or camera state itself.
+    this.mobileControls.setActions({
+      onFullscreen: () => this.fullscreen.toggle(),
+      onCamera: () => this.cameraRig.toggle()
+    });
+    this.mobileControls.setFullscreenActive(this.fullscreen.isActive);
 
     // Touch-primary devices default straight into touch controls;
     // desktop with a mouse/trackpad keeps the existing keyboard default.
@@ -915,6 +992,11 @@ if (this.input.consumeReset() && !this.playerHealth.dead) {
     // Small camera kick on activation, reusing the existing impact-shake
     // system rather than adding a second one (see CameraManager.notifyImpact).
     this.cameraRig.notifyImpact(5);
+    this.audio.playTurboStart();
+  }
+
+  if (turboState.justDeactivated) {
+    this.audio.playTurboEnd();
   }
 
   this.cameraRig.setTurboActive(turboState.active);
@@ -952,7 +1034,30 @@ if (this.input.consumeReset() && !this.playerHealth.dead) {
     }
 
     this.playerHealthBar.setRatio(this.playerHealth.ratio);
-    this.playerHealthBar.updateTransform(this.vehicle.root.position, this.camera);
+    this.playerHealthBar.setBatteryStatus(
+      this.battery.ratio, this.battery.state, this.battery.charging
+    );
+    this.playerHealthBar.updateTransform(this.vehicle.root.position, this.camera, dt);
+
+    // Charging station coil/particle feedback -- purely visual, so it
+    // only needs to run once per rendered frame (not per physics substep).
+    this.chargingStation.update(
+      dt, this.battery.charging, this.vehiclePhysics.body.position
+    );
+
+    // Charging start/stop is an edge (not a BatterySystem state-machine
+    // transition -- see battery.onStateChange above), so it's detected
+    // here against the previous frame's flag. "Complete" only fires when
+    // charging stops because the battery actually reached full, not
+    // merely because the player drove out of the zone.
+    if (this.battery.charging && !this._wasCharging) {
+      this.audio.playChargingStart();
+    } else if (!this.battery.charging && this._wasCharging && this.battery.percent >= 100) {
+      this.audio.playChargingComplete();
+    }
+    this._wasCharging = this.battery.charging;
+
+    this.levelUpEffect.update(dt);
 
     if (this.bossHudElement) {
       this.bossHudElement.hidden = !this.targetSystem.bossActive;
@@ -1112,7 +1217,8 @@ this.audio.update({
   surface,
   driverView: this.cameraRig.mode === "driver",
   lugging,
-  slip
+  slip,
+  charging: this.battery.charging
 });
 
 this.audio.playFeedback(feedback.events);
