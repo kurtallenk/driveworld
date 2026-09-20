@@ -32,7 +32,7 @@ export function readRawControl(gamepad, control) {
 }
 
 // Digital press state for a button-mapped control (gear paddles). Only
-// meaningful for type "button" — steering/pedals stay analog even when
+// meaningful for type "button" - steering/pedals stay analog even when
 // physically mapped to a button (e.g. a trigger reported as a button).
 export function isButtonHeld(gamepad, control) {
   if (!control || control.type !== "button") return false;
@@ -47,7 +47,7 @@ function validDeadzone(value) {
   return Number.isFinite(value) && value >= 0 && value <= 0.2;
 }
 
-// Manual (clutch + sequential gears) is optional — a profile with no
+// Manual (clutch + sequential gears) is optional - a profile with no
 // `clutch`/`gearUp`/`gearDown` mapping is still valid, just Arcade-only.
 // clutch and the gear paddles are a package: either all three are present
 // (manual-capable) or none are (arcade-only). Partial manual mapping is

@@ -64,7 +64,7 @@ export class LevelUpEffect {
 
     if (this.subtitleElement) {
       this.subtitleElement.textContent = evolution
-        ? `EVOLUTION UNLOCKED — ${evolutionLabel}`
+        ? `EVOLUTION UNLOCKED! ${evolutionLabel}`
         : "VEHICLE UPGRADED";
     }
 

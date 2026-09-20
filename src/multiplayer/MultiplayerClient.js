@@ -114,7 +114,7 @@ export class MultiplayerClient {
         this.selfId = null;
         this.clearRemotes();
 
-        this.status.textContent = "Offline — local driving available";
+        this.status.textContent = "Offline local driving available";
         this.button.textContent = "Connect multiplayer";
       } else {
         this.running = true;
@@ -155,7 +155,7 @@ export class MultiplayerClient {
     // this.updateLeaderboard([]);
 
     // Keeps other UI (the mobile HUD in particular) from ever sitting
-    // underneath this panel, in either state, at any viewport size — see
+    // underneath this panel, in either state, at any viewport size - see
     // the body.mobile-controls-active #hud rule in style.css, which reads
     // the --op-reserved variable this sets.
     if (typeof ResizeObserver !== "undefined") {
@@ -265,7 +265,7 @@ export class MultiplayerClient {
 
       if (event.code === 4001) {
         this.running = false;
-        this.status.textContent = "Session full — try connecting later";
+        this.status.textContent = "Session full. Sorry try connecting later";
         this.button.textContent = "Connect multiplayer";
         return;
       }
@@ -656,7 +656,7 @@ export class MultiplayerClient {
 
   //   for (const entry of entries) {
   //     const item = document.createElement("li");
-  //     item.textContent = `${entry.name} — ${entry.deliveries} deliveries`;
+  //     item.textContent = `${entry.name} - ${entry.deliveries} deliveries`;
   //     this.leaderboardList.append(item);
   //   }
 

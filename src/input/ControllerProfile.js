@@ -87,7 +87,7 @@ export function readControllerInput(gamepad, profile) {
 
 // Same safety gate as isV99ReadyToArm: nothing engages until steering is
 // centered, every pedal is released, and (for a manual-capable profile)
-// the virtual gear is neutral — all held steady for the caller's timer.
+// the virtual gear is neutral - all held steady for the caller's timer.
 export function isControllerReadyToArm(reading, gear) {
   if (!reading.valid) return false;
 

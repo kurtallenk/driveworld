@@ -428,10 +428,10 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
         // Immediately offline the turret, same method playerHealth.onDeath
         // already uses to interrupt an in-progress deploy/cut a live one.
         this.turret.forceRetract();
-        this.showNotice("BATTERY DEPLETED — TURRET OFFLINE · TURBO DISABLED", 3);
+        this.showNotice("BATTERY DEPLETED! TURRET OFFLINE · TURBO DISABLED", 3);
         this.audio.playBatteryWarning("empty");
       } else if (newState === "critical") {
-        this.showNotice("CRITICAL BATTERY — HEAD TO A CHARGING STATION", 2.5);
+        this.showNotice("CRITICAL BATTERY! HEAD TO A CHARGING STATION", 2.5);
         this.audio.playBatteryWarning("critical");
       } else if (newState === "low") {
         this.showNotice("LOW BATTERY", 2);
@@ -496,7 +496,7 @@ cameraButton.addEventListener("click", () => {
 // Fullscreen: one FullscreenManager instance is the single source of
 // truth for fullscreen state. The settings-menu button and the mobile
 // landscape corner button (wired up later, once this.mobileControls
-// exists) both just call fullscreen.toggle() / read the onChange below —
+// exists) both just call fullscreen.toggle() / read the onChange below -
 // neither owns its own fullscreen logic.
 const fullscreenButton = document.querySelector("#fullscreen-toggle");
 
@@ -661,7 +661,7 @@ if (controllerButton) {
     this.debugElement = document.querySelector("#input-debug");
 
     // Display unit toggle for the speedometer. The underlying game value
-    // stays km/h everywhere (physics, audio, network) — this only affects
+    // stays km/h everywhere (physics, audio, network) - this only affects
     // the dashboard readout.
     this.speedUnit = "mph";
     if (this.speedUnitElement) {
@@ -818,7 +818,7 @@ if (controllerButton) {
     this.menu = new SettingsMenu();
 
     // HUD visibility (DEFAULT / SIMPLIFIED / HIDE ALL). Everything this
-    // drives is a body[data-hud-mode] CSS rule (see style.css) — this
+    // drives is a body[data-hud-mode] CSS rule (see style.css) - this
     // class only owns the mode itself, persistence, and the toggle
     // button's label. It never reaches into individual HUD elements.
     this.hudModeToggle = document.querySelector("#hud-mode-toggle");
@@ -826,7 +826,7 @@ if (controllerButton) {
     this.hudModeRadios = document.querySelectorAll("input[name='hud-mode']");
 
     // Both the top-right toggle and the ESC > Display > HUD radios only
-    // ever read/write through this.hudVisibility — neither owns its own
+    // ever read/write through this.hudVisibility - neither owns its own
     // state, so they can't drift out of sync with each other.
     const syncHudModeControls = mode => {
       if (this.hudModeToggleLabel) {
@@ -876,7 +876,7 @@ if (controllerButton) {
     this.interactions.mobileControls = this.mobileControls;
 
     // The mobile landscape corner cluster (fullscreen + camera) calls
-    // back into the same systems the desktop settings menu uses — it
+    // back into the same systems the desktop settings menu uses - it
     // never owns fullscreen or camera state itself.
     this.mobileControls.setActions({
       onFullscreen: () => this.fullscreen.toggle(),
@@ -1273,7 +1273,7 @@ if (this.input.consumeReset() && !this.playerHealth.dead) {
 
     while (this.accumulator >= FIXED_DT) {
   // "wheelActive" here means "a source capable of clutch + H-shifter
-  // input is currently live" — the physical wheel or touch controls.
+  // input is currently live" - the physical wheel or touch controls.
   const wheelActive =
     this.input.activeSource === "PXN V99" ||
     this.input.activeSource === "Mobile Touch";
@@ -1664,7 +1664,7 @@ this.renderer.render(this.scene, this.camera);
 
       // Tachometer arc + digital RPM readout share the same
       // presentationRPM already computed above for audio/vehicle
-      // feedback this frame — just mapped onto the gauge's sweep.
+      // feedback this frame - just mapped onto the gauge's sweep.
       const rpmFraction =
         Math.max(0, Math.min(1, presentationRPM / DASH_RPM_MAX));
 
@@ -1819,7 +1819,7 @@ if (this.turboStatusElement) {
 if (this.boostFillElement) {
   // Ready: full bar. Active: drains toward 0 as the boost is used up.
   // Cooldown: refills back toward full. All derived from the single
-  // existing TurboSystem state — no separate boost meter is invented.
+  // existing TurboSystem state - no separate boost meter is invented.
   const boostFraction = this.turbo.state === "active"
     ? this.turbo.durationRemaining / this.turbo.config.duration
     : this.turbo.state === "cooldown"

@@ -8,7 +8,7 @@ import {
 } from "../input/WheelCalibration.js";
 
 // `title` is the short step headline; `text` is the fuller instruction
-// paragraph underneath it. `visual` picks the live-input bar's labels —
+// paragraph underneath it. `visual` picks the live-input bar's labels -
 // it's purely cosmetic, not a different code path per step.
 const STEPS = [
   {
@@ -113,7 +113,7 @@ function friendlyError(error) {
 
   if (copy) return copy;
 
-  // Unrecognized errors still get plain-language copy — the raw message
+  // Unrecognized errors still get plain-language copy - the raw message
   // is for logs/devtools, not the headline the player sees.
   return {
     title: "Something went wrong.",
@@ -463,7 +463,7 @@ export class WheelCalibrationWizard {
     this.busy = true;
     this.captureButton.disabled = true;
     this.status.textContent =
-      "Measuring for 0.6 seconds—hold steady…";
+      "Measuring for 0.6 seconds hold steady…";
 
     const token = ++this.token;
 
@@ -566,7 +566,7 @@ export class WheelCalibrationWizard {
         `Captured: ${average.toFixed(4)}. ` +
         (STEPS[this.stepIndex]
           ? "Move to the next position and capture."
-          : "All steps done — review and save below.");
+          : "All steps done review and save below.");
     } catch (error) {
       if (token === this.token) {
         const { title, detail } = friendlyError(error);

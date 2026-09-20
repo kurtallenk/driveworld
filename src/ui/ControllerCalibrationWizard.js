@@ -13,7 +13,7 @@ import {
 
 // Unlike WheelCalibrationWizard's STEPS (fixed axis per step, since the
 // V99 layout is already known), most steps here don't know which
-// axis/button they're capturing until the player moves it — "detect"
+// axis/button they're capturing until the player moves it - "detect"
 // steps identify the control by diffing against the neutral baseline;
 // "confirm" steps re-read a control a previous step already identified.
 const STEPS = [
@@ -22,7 +22,7 @@ const STEPS = [
     kind: "baseline",
     title: "Neutral position",
     text: "Center the steering stick and release every pedal, trigger, " +
-      "and button — including any paddles you plan to use for shifting."
+      "and button including any paddles you plan to use for shifting."
   },
   {
     key: "steer-left",
@@ -176,7 +176,7 @@ function taggedError(message, code) {
 }
 
 // Ranks compareCapture() candidates by how much they moved, on a common
-// scale — axis candidates carry `.delta` already; button candidates only
+// scale - axis candidates carry `.delta` already; button candidates only
 // carry before/after readings, so their magnitude is computed the same way.
 function magnitude(candidate) {
   return candidate.type === "axis"
@@ -210,7 +210,7 @@ export class ControllerCalibrationWizard {
       <h3>Controller calibration</h3>
 
       <p class="settings-help">
-        Works with any gamepad — steering, pedals, and (optionally)
+        Works with any gamepad steering, pedals, and (optionally)
         paddle/shoulder buttons for sequential shifting are discovered by
         watching what changes as you move each control. The local game
         remains paused.
@@ -269,7 +269,7 @@ export class ControllerCalibrationWizard {
           </button>
 
           <button type="button" data-ccalib="skip-manual" hidden>
-            Skip shifting — Arcade only
+            Skip shifting Arcade only
           </button>
 
           <button type="button" data-ccalib="save" hidden>
@@ -340,7 +340,7 @@ export class ControllerCalibrationWizard {
     });
   }
 
-  // Any connected gamepad is a candidate to calibrate — unlike the V99
+  // Any connected gamepad is a candidate to calibrate - unlike the V99
   // wizard's selectedPad(), there's no layout to filter by yet. Locks
   // onto whichever device answers the FIRST capture (the baseline step)
   // and requires every step after that to come from the same device.
@@ -445,7 +445,7 @@ export class ControllerCalibrationWizard {
     this.backButton.disabled = this.stepIndex <= 1;
 
     // Offer the Arcade-only shortcut right up until the clutch step
-    // starts — once a manual control is captured, going back is how to
+    // starts - once a manual control is captured, going back is how to
     // change your mind (mirrors the "Back re-captures" convention).
     this.skipManualButton.hidden =
       this.manualSkipped || finished || step.key !== "clutch-press";
@@ -470,7 +470,7 @@ export class ControllerCalibrationWizard {
     this.instruction.textContent = step.text;
 
     if (step.kind === "baseline" || step.kind === "detect-button") {
-      // Nothing meaningful to plot yet — the control isn't identified,
+      // Nothing meaningful to plot yet - the control isn't identified,
       // or (for a button) a live dot doesn't convey anything useful.
       this.liveEl.hidden = true;
       return;
@@ -483,7 +483,7 @@ export class ControllerCalibrationWizard {
       return;
     }
 
-    // "confirm" steps read an already-known control — show it live,
+    // "confirm" steps read an already-known control - show it live,
     // exactly like WheelCalibrationWizard does for its fixed axes.
     const control = this.draft.mapping[step.mappingKey];
 
@@ -532,7 +532,7 @@ export class ControllerCalibrationWizard {
 
     this.showStep();
     this.status.textContent =
-      "Shifting skipped — this profile will be Arcade only.";
+      "Shifting skipped this profile will be Arcade only.";
   }
 
   startLiveLoop() {
@@ -632,7 +632,7 @@ export class ControllerCalibrationWizard {
 
     this.busy = true;
     this.captureButton.disabled = true;
-    this.status.textContent = "Measuring for 0.6 seconds—hold steady…";
+    this.status.textContent = "Measuring for 0.6 seconds hold steady…";
 
     const token = ++this.token;
 
@@ -655,7 +655,7 @@ export class ControllerCalibrationWizard {
         this.status.textContent =
           `Captured. ${steps[this.stepIndex]
             ? "Move to the next control and capture."
-            : "All steps done — review and save below."}`;
+            : "All steps done review and save below."}`;
         return;
       }
 
@@ -666,7 +666,7 @@ export class ControllerCalibrationWizard {
       this.status.textContent =
         `Captured. ${steps[this.stepIndex]
           ? "Move to the next control and capture."
-          : "All steps done — review and save below."}`;
+          : "All steps done review and save below."}`;
     } catch (error) {
       if (token === this.token) {
         const { title, detail } = friendlyError(error);
@@ -736,7 +736,7 @@ export class ControllerCalibrationWizard {
     this.usedControls.add(controlKey(control));
 
     if (step.kind === "detect-button") {
-      // Digital control — no analog endpoint to record.
+      // Digital control - no analog endpoint to record.
       return;
     }
 

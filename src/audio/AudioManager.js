@@ -360,7 +360,7 @@ export class AudioManager {
      */
     if (ctx.state === "suspended") {
       console.log(
-        "Audio ready — waiting for first user interaction."
+        "Audio ready waiting for first user interaction."
       );
     }
   }

@@ -73,7 +73,7 @@ export class ManualDrivetrain {
       requestedGear < -1 ||
       requestedGear > 6
     ) {
-      this.message = "Invalid shifter reading — holding engaged gear";
+      this.message = "Invalid shifter reading  holding engaged gear";
       return;
     }
 
@@ -119,7 +119,7 @@ export class ManualDrivetrain {
 
     // Prototype protection, not a damage/synchronizer simulation.
     if (projectedRPM > MANUAL_CONFIG.revLimitRPM * 1.08) {
-      this.message = "Downshift rejected — projected engine overspeed";
+      this.message = "Downshift rejected  projected engine overspeed";
       return;
     }
 
@@ -208,7 +208,7 @@ export class ManualDrivetrain {
 
         if (this.stallTimer >= 0.12) {
           this.engineRunning = false;
-          this.message = "Engine stalled — press clutch and restart";
+          this.message = "Engine stalled  press clutch and restart";
         }
       } else {
         this.stallTimer = 0;

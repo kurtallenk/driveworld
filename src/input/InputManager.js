@@ -50,7 +50,7 @@ export class InputManager {
     this.v99Calibration = loadWheelCalibration();
     // Unlike v99Calibration (fixed layout, only endpoints stored), a
     // generic controller's mapping is discovered per-device by the
-    // calibration wizard — see ControllerCalibration.js/ControllerProfile.js.
+    // calibration wizard - see ControllerCalibration.js/ControllerProfile.js.
     this.controllerProfile = loadControllerProfile();
     // Virtual sequential-shifter position for controller mode (paddle/
     // button up-down instead of an H-pattern). Starts neutral; only ever
@@ -222,7 +222,7 @@ export class InputManager {
   savePreference() {
     try {
       // This versioned profile ID refers to the complete mapping in
-      // V99Profile.js. Controller mode has no equivalent fixed ID — its
+      // V99Profile.js. Controller mode has no equivalent fixed ID - its
       // saved profile (device signature + discovered mapping) already
       // lives under its own storage key, loaded via controllerProfile.
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -270,7 +270,7 @@ export class InputManager {
 
   // Selects a previously-calibrated generic controller (see
   // ControllerCalibrationWizard). Requires a saved profile AND exactly
-  // one currently-connected device matching that profile's signature —
+  // one currently-connected device matching that profile's signature -
   // same "exactly one candidate" safety convention as enableV99().
   enableController() {
     if (!this.controllerProfile) {
@@ -400,7 +400,7 @@ export class InputManager {
     if (this.mode === "mobile") {
       // Same "unattended input on an unfocused page" guard as the wheel.
       if (document.hidden || !document.hasFocus()) {
-        this.activeSource = "None — waiting";
+        this.activeSource = "None - waiting";
         this.status = "Touch controls paused while the page is unfocused";
         this.shifter = null;
         return normalizeInput();
@@ -430,7 +430,7 @@ export class InputManager {
     // Do not apply unattended gamepad input to an unfocused page.
     if (document.hidden || !document.hasFocus()) {
       this.disarm();
-      this.activeSource = "None — waiting";
+      this.activeSource = "None - waiting";
       this.status = "Wheel paused while the page is unfocused";
       return normalizeInput();
     }
@@ -440,7 +440,7 @@ export class InputManager {
     if (candidates.length !== 1) {
       this.disarm();
       this.shifter = null;
-      this.activeSource = "None — waiting";
+      this.activeSource = "None - waiting";
       this.status = candidates.length > 1
         ? "Multiple matching devices; wheel input disabled"
         : "Waiting for saved V99 device; wheel input disabled";
@@ -459,7 +459,7 @@ export class InputManager {
 
     if (!reading.valid) {
       this.disarm();
-      this.activeSource = "None — invalid input";
+      this.activeSource = "None - invalid input";
       this.status = reading.reason;
       return normalizeInput();
     }
@@ -477,7 +477,7 @@ export class InputManager {
       }
 
       if (!this.armed) {
-        this.activeSource = "None — safety check";
+        this.activeSource = "None - safety check";
         this.status =
           "Center wheel, release ALL pedals, and select neutral for ½ second.";
 
@@ -504,7 +504,7 @@ export class InputManager {
   sampleController() {
     if (document.hidden || !document.hasFocus()) {
       this.disarm();
-      this.activeSource = "None — waiting";
+      this.activeSource = "None - waiting";
       this.status = "Controller paused while the page is unfocused";
       this.shifter = null;
       return normalizeInput();
@@ -516,7 +516,7 @@ export class InputManager {
     if (candidates.length !== 1) {
       this.disarm();
       this.shifter = null;
-      this.activeSource = "None — waiting";
+      this.activeSource = "None - waiting";
       this.status = candidates.length > 1
         ? "Multiple matching devices; controller input disabled"
         : "Waiting for calibrated controller; controller input disabled";
@@ -534,7 +534,7 @@ export class InputManager {
 
     if (!reading.valid) {
       this.disarm();
-      this.activeSource = "None — invalid input";
+      this.activeSource = "None - invalid input";
       this.status = reading.reason;
       this.shifter = null;
       return normalizeInput();
@@ -581,7 +581,7 @@ export class InputManager {
       }
 
       if (!this.armed) {
-        this.activeSource = "None — safety check";
+        this.activeSource = "None - safety check";
         this.status = manualCapable
           ? "Center steering, release ALL pedals, and select neutral for ½ second."
           : "Center steering and release ALL pedals for ½ second.";
@@ -648,7 +648,7 @@ export class InputManager {
         (this.mode === "controller" &&
           matchesControllerProfile(gamepad, this.controllerProfile))
           ? this.status
-          : "Diagnostic only — no enabled binding",
+          : "Diagnostic only - no enabled binding",
       axes: Array.from(
         gamepad.axes,
         value => Number(value.toFixed(3))

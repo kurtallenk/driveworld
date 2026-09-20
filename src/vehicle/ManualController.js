@@ -40,7 +40,7 @@ export class ManualController {
       this.steering = 0;
       this.telemetry = {
         ...state,
-        message: "Wheel inactive — drivetrain disconnected, brakes applied"
+        message: "Wheel inactive drivetrain disconnected, brakes applied"
       };
 
       return {
