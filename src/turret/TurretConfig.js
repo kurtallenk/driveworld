@@ -168,8 +168,8 @@ export const PLAYER_CONFIG = {
 };
 
 export const LEVEL_CONFIG = {
-  baseXP: 20,
-  curveExponent: 1.35 // xpRequired(level) = baseXP * level^curveExponent
+  baseXP: 25,
+  curveExponent: 1.2 // xpRequired(level) = baseXP * level^curveExponent
 };
 
 // Roof anchor points, in each vehicle's own local space. The local player's

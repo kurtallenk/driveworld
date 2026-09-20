@@ -1,0 +1,1074 @@
+/* ---------------------------------------------------------------------------
+   DRIVEWORLD - LANDSCAPE COMPOSITION (follows DriveWorld_UI_Landscape_UI.pdf)
+   ---------------------------------------------------------------------------
+   Loaded LAST (see main.js), alongside ui/portrait-fix.css. The two files are
+   peers and are mutually exclusive BY SELECTOR, not by load order: every rule
+   here is scoped to [data-mc-orientation="landscape"] or
+   #mobile-controls[data-orientation="landscape"], and every rule there is
+   scoped to the portrait equivalents. A landscape rule therefore cannot leak
+   into portrait even if the load order is ever changed.
+
+   No control is created or redesigned here. Every button, panel and readout
+   keeps the look it already has; this file decides WHERE each one sits in
+   landscape, how big it is, and which of them each HUD preset shows.
+
+   ---------------------------------------------------------------------------
+   THE UNIT SYSTEM
+   ---------------------------------------------------------------------------
+   The three reference pages are authored at 1568 x 704 CSS px. Every offset
+   and size below is the measurement taken off that artwork multiplied by
+   --lf-u.
+
+       --lf-u = min(width / 1568, height / 704), capped at 1.25px
+
+   Taking the MIN OF BOTH AXES is what makes one composition span the whole
+   range the brief asks for. A 16:9 phone is height-limited and a 20:9 phone is
+   width-limited; the min picks whichever axis is scarcer, so the deck never
+   grows taller than the screen on a wide device nor wider than it on a short
+   one. The 1.25px cap stops the controls ballooning on a landscape tablet.
+
+   There is deliberately NO large floor on --lf-u. Floors live on the
+   individual TOUCH TARGETS instead (max(2.75rem, ...) - the same
+   --mc-hit-min budget the rest of the touch layer uses), while passive
+   readouts (dash, vitals card, chat, player count) scale freely. That split is
+   what keeps a 568 x 320 landscape phone inside its own width: the readouts
+   shrink, the things a thumb has to hit do not.
+
+   ---------------------------------------------------------------------------
+   THE COMPOSITION (page 1)
+   ---------------------------------------------------------------------------
+     top-left        HP / LV card                       #combat-hud
+     under it        player count pill                  .op-panel
+     top-right       CHANGE VIEW | Fullscreen | HUD: <MODE> | MENU
+     right           chat bubble, then the chat panel
+     bottom-left     the steering pair
+     bottom-centre   MAP / BAG above the dashboard, hotbar to its right
+     bottom-right    TURBO/TURRET | HAND BRAKE | GAS over BRAKE
+
+   ---------------------------------------------------------------------------
+   SIGNALS THIS FILE KEYS OFF (all written by existing modules)
+   ---------------------------------------------------------------------------
+     body[data-mc-orientation="landscape"]               MobileControls
+     body[data-mc-mode="arcade"|"manual"]                MobileControls
+     body[data-hud-mode="default"|"simplified"|"hidden"] HudVisibility
+     #mobile-controls[data-orientation="landscape"]      MobileControls
+   --------------------------------------------------------------------------- */
+
+/* =========================================================================
+   0. SCALE
+   Declared once on <body> so everything below - including the rules that
+   match #mobile-controls - inherits from a single definition.
+   ========================================================================= */
+
+body[data-mc-orientation="landscape"] {
+	--lf-u: clamp(
+		0.25px,
+		min(
+			calc(var(--mc-vw, 100vw) / 1568),
+			calc(var(--mc-vh, 100vh) / 704)
+		),
+		1.25px
+	);
+
+	/* Artwork margins plus the device safe area, so nothing lands under a
+	   notch, a home indicator or a rounded corner. */
+	--lf-et: calc(var(--mc-safe-t, 0px) + 16 * var(--lf-u));
+	--lf-er: calc(var(--mc-safe-r, 0px) + 17 * var(--lf-u));
+	--lf-el: calc(var(--mc-safe-l, 0px) + 12 * var(--lf-u));
+	--lf-eb: calc(var(--mc-safe-b, 0px) + 12 * var(--lf-u));
+
+	/* ---- top-right tiles ---- */
+	--lf-tile-w: max(3.4rem, calc(84 * var(--lf-u)));
+	/* 2.75rem, not the artwork's 56px, is the floor: --mc-hit-min is the
+	   project's minimum tap target and a 16:9 viewport is WIDTH-limited
+	   against a 2.227 reference, so 56 * --lf-u falls to ~41px there. */
+	--lf-tile-h: max(2.75rem, calc(56 * var(--lf-u)));
+	--lf-tile-gap: calc(13 * var(--lf-u));
+
+	/* ---- top-left stack (passive: no touch floor) ---- */
+	--lf-vitals-w: min(32vw, calc(329 * var(--lf-u)));
+	--lf-vitals-h: calc(86 * var(--lf-u));
+	--lf-pc-w: min(24vw, calc(241 * var(--lf-u)));
+
+	/* ---- chat (passive) ---- */
+	--lf-chat-w: min(30vw, calc(346 * var(--lf-u)));
+	--lf-bubble-h: max(2.75rem, calc(40 * var(--lf-u)));
+	--lf-chat-top: calc(var(--lf-et) + var(--lf-tile-h) + 46 * var(--lf-u));
+
+	/* ---- steering ---- */
+	--lf-steer: max(2.75rem, calc(180 * var(--lf-u)));
+	--lf-steer-gap: calc(42 * var(--lf-u));
+
+	/* ---- pedals ---- */
+	--lf-ped-w: max(2.75rem, calc(122 * var(--lf-u)));
+	--lf-gas-h: max(2.75rem, calc(145 * var(--lf-u)));
+	--lf-brake-h: max(2.75rem, calc(142 * var(--lf-u)));
+	--lf-ped-gap: calc(13 * var(--lf-u));
+
+	/* ---- handbrake / turbo / turret ---- */
+	--lf-hb-w: max(2.75rem, calc(127 * var(--lf-u)));
+	--lf-act-w: max(2.75rem, calc(124 * var(--lf-u)));
+	--lf-turbo-h: max(2.75rem, calc(64 * var(--lf-u)));
+	--lf-turret-h: max(2.75rem, calc(55 * var(--lf-u)));
+	--lf-act-gap: calc(18 * var(--lf-u));
+	--lf-cluster-gap: calc(12 * var(--lf-u));
+
+	/* ---- dashboard (passive) ---- */
+	--lf-dash-w: calc(413 * var(--lf-u));
+	--lf-gauge: calc(144 * var(--lf-u));
+	--lf-info-w: calc(332 * var(--lf-u));
+	--lf-gauge-overlap: calc(-63 * var(--lf-u));
+
+	/* ---- MAP / BAG ----
+	   Anchored from the centre line, like the dash and the hotbar. Note that
+	   `right: calc(50% - N)` puts the element's RIGHT EDGE at 50% + N, so
+	   these are the artwork's distance from centre to the right edge of the
+	   BAG tile: 788 - 784 = 4 on page 1, 850 - 784 = 66 on page 2. */
+	--lf-util-w: max(2.75rem, calc(66 * var(--lf-u)));
+	/* The artwork draws these 34px tall. They are still tap targets, so the
+	   floor wins: a deliberate ~10px deviation from the reference rather
+	   than a control below the project's own --mc-hit-min budget. */
+	--lf-util-h: max(2.75rem, calc(34 * var(--lf-u)));
+	--lf-util-right: calc(50% - 4 * var(--lf-u));
+
+	/* Clearance floor. MAP/BAG sit above whatever occupies the bottom-centre
+	   band, and on a small landscape phone the hotbar slots stop shrinking at
+	   their 2.75rem floor while the artwork offset keeps scaling down. Taking
+	   the max against the slot's real height keeps the gap open there without
+	   moving anything at reference scale (129 > 26 + 80). */
+	--lf-util-clear: calc(26 * var(--lf-u) + var(--lf-slot-h));
+	--lf-util-bottom: max(calc(129 * var(--lf-u)), var(--lf-util-clear));
+
+	/* ---- hotbar ---- */
+	--lf-slot-w: max(2.75rem, calc(100 * var(--lf-u)));
+	--lf-slot-h: max(2.75rem, calc(80 * var(--lf-u)));
+	--lf-slot-gap: calc(15 * var(--lf-u));
+
+	/* ---- SIMPLIFIED dash + the bar that straddles it ----
+	   The reference bar is 505px wide, which works while the slots scale. On a
+	   small landscape phone the slots hit their 2.75rem floor and stop
+	   shrinking, so a fixed 505 * --lf-u would let them close over the dash.
+	   Taking the max against "dash + both slots + both gaps" makes the split
+	   widen exactly as much as the floors require, and not a pixel more. */
+	--lf-dash-simple-w: calc(279 * var(--lf-u));
+	--lf-simple-bar-w: max(
+		calc(505 * var(--lf-u)),
+		calc(
+			var(--lf-dash-simple-w) + 2 * var(--lf-slot-w) + 2 *
+				var(--lf-slot-gap)
+		)
+	);
+}
+
+/* =========================================================================
+   1. TOP-RIGHT: CHANGE VIEW | Fullscreen | HUD: <MODE> | MENU
+   -------------------------------------------------------------------------
+   Three of the four tiles already live in .mc-hud-top-actions. MENU is the
+   pause button from the utility rail: rather than duplicate it, the row
+   leaves its fourth cell empty and the existing button is pinned into exactly
+   that cell. Both anchor to the same edge variables at the same tile size, so
+   they cannot drift apart. This mirrors what portrait-fix.css already does
+   with its 2 x 2 grid.
+   ========================================================================= */
+
+#mobile-controls[data-orientation="landscape"] .mc-hud-top-actions {
+	position: absolute;
+	top: var(--lf-et);
+	right: var(--lf-er);
+	left: auto;
+	bottom: auto;
+	transform: none;
+
+	display: grid;
+	grid-template-columns: repeat(4, var(--lf-tile-w));
+	grid-template-rows: var(--lf-tile-h);
+	gap: var(--lf-tile-gap);
+	align-items: stretch;
+}
+
+/* .mc-corner-actions is only a wrapper: let its two buttons take a cell each
+   instead of sharing one. */
+#mobile-controls[data-orientation="landscape"] .mc-corner-actions {
+	display: contents;
+}
+
+/* ---- ROW BASELINE ------------------------------------------------------
+   style.css sets a page-wide `button { margin-top: 1rem }` default, meant
+   for the menu/intro buttons. It also lands on these four HUD tiles.
+   #hud-mode-toggle was the only one exempted (it clears its margin in its
+   own rule below), so CHANGE VIEW, Fullscreen and MENU were pushed 1rem
+   down while HUD: <MODE> stayed at the top edge -- the four tiles sat on
+   two different baselines.
+
+   Clearing the margin on all four puts every tile back on the row's own
+   top edge, which is what the grid and the pinned MENU button already
+   agree on. portrait-fix.css neutralises the same default for its own
+   tiles; this is the landscape equivalent, scoped to just this row so no
+   other landscape control is affected. */
+#mobile-controls[data-orientation="landscape"]
+	:is(.mc-corner-btn, .mc-util-btn--pause, #hud-mode-toggle) {
+	margin: 0 !important;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-corner-btn--camera {
+	grid-area: 1 / 1;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-corner-btn--fullscreen {
+	grid-area: 1 / 2;
+}
+
+#mobile-controls[data-orientation="landscape"] #hud-mode-toggle {
+	position: static !important;
+	grid-area: 1 / 3;
+	margin: 0 !important;
+	padding: 0 calc(3 * var(--lf-u)) !important;
+	width: var(--lf-tile-w);
+	height: var(--lf-tile-h);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	font-size: max(0.42rem, calc(11 * var(--lf-u)));
+	letter-spacing: 0;
+	line-height: 1.15;
+	white-space: normal;
+	overflow-wrap: break-word;
+	overflow: hidden;
+}
+
+/* Break between "HUD:" and the mode name, never inside the mode name. */
+#mobile-controls[data-orientation="landscape"] #hud-mode-toggle-label {
+	white-space: normal;
+	word-break: keep-all;
+	overflow-wrap: break-word;
+}
+
+/* MENU: the existing pause button, pinned into the free fourth cell. */
+#mobile-controls[data-orientation="landscape"] .mc-util-btn--pause {
+	position: fixed;
+	top: var(--lf-et);
+	right: var(--lf-er);
+	bottom: auto;
+	left: auto;
+	width: var(--lf-tile-w) !important;
+	height: var(--lf-tile-h) !important;
+	min-width: 0;
+	min-height: 0;
+}
+
+/* Tiles read as labelled buttons, using the project's existing icons and the
+   same captions portrait already uses. */
+#mobile-controls[data-orientation="landscape"] .mc-corner-btn {
+	width: var(--lf-tile-w) !important;
+	height: var(--lf-tile-h) !important;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: calc(1.5 * var(--lf-u));
+	padding: 0 0.15rem;
+	font: 600 max(0.42rem, calc(10.5 * var(--lf-u))) / 1.15 var(--dw-font);
+	letter-spacing: 0.01em;
+	text-align: center;
+	white-space: normal;
+	overflow: hidden;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-corner-btn--camera::after {
+	content: "CHANGE VIEW";
+}
+
+#mobile-controls[data-orientation="landscape"]
+	.mc-corner-btn--fullscreen::after {
+	/* Mixed case, as drawn: "FULLSCREEN" in caps does not fit the tile. */
+	content: "Fullscreen";
+	text-transform: none;
+}
+
+#mobile-controls[data-orientation="landscape"]
+	:is(.mc-corner-btn, .mc-util-btn--pause)
+	svg {
+	width: max(0.7rem, calc(16 * var(--lf-u)));
+	height: max(0.7rem, calc(16 * var(--lf-u)));
+}
+
+#mobile-controls[data-orientation="landscape"]
+	.mc-util-btn--pause
+	.mc-util-label {
+	font-size: max(0.46rem, calc(11 * var(--lf-u)));
+	letter-spacing: 0.08em;
+}
+
+/* The desktop corner-chip menu is redundant once MENU is a tile. */
+body[data-mc-orientation="landscape"] #open-menu {
+	display: none !important;
+}
+
+/* =========================================================================
+   2. TOP-LEFT: HP / LV CARD
+   The card keeps its existing rows, bars and icon; only the box moves.
+   ========================================================================= */
+
+body[data-mc-orientation="landscape"] #combat-hud {
+	top: var(--lf-et) !important;
+	left: var(--lf-el) !important;
+	right: auto !important;
+	bottom: auto !important;
+	width: var(--lf-vitals-w) !important;
+	max-width: var(--lf-vitals-w) !important;
+	padding: calc(8 * var(--lf-u)) calc(11 * var(--lf-u)) !important;
+	border-radius: calc(9 * var(--lf-u));
+	font-size: max(0.5rem, calc(13 * var(--lf-u))) !important;
+	z-index: var(--z-hud, 4);
+}
+
+/* Label | bar | (value under the bar), as drawn: the numeric readout sits
+   centred beneath its own bar instead of beside it. */
+body[data-mc-orientation="landscape"] #combat-hud .combat-row {
+	display: grid !important;
+	grid-template-columns: max-content 1fr;
+	grid-template-rows: auto auto;
+	align-items: center;
+	column-gap: calc(10 * var(--lf-u));
+	row-gap: calc(2 * var(--lf-u));
+	margin-bottom: calc(6 * var(--lf-u)) !important;
+}
+
+body[data-mc-orientation="landscape"] #combat-hud .combat-row:last-of-type {
+	margin-bottom: 0 !important;
+}
+
+body[data-mc-orientation="landscape"]
+	#combat-hud
+	:is(.combat-row-icon, .combat-row-label) {
+	grid-area: 1 / 1 / 3 / 2;
+	font-size: max(0.5rem, calc(15 * var(--lf-u)));
+	font-weight: 700;
+	letter-spacing: 0.04em;
+}
+
+/* The reference labels the first row "HP" in type rather than with the heart
+   glyph. The same element carries it - the glyph is swapped for a caption the
+   way portrait-fix.css already captions the corner buttons - so there is no
+   second health element and no change to what feeds #player-hp-text. */
+body[data-mc-orientation="landscape"] #combat-hud .combat-row-icon svg {
+	display: none;
+}
+
+body[data-mc-orientation="landscape"] #combat-hud .combat-row-icon::after {
+	content: "HP";
+}
+
+body[data-mc-orientation="landscape"] #combat-hud .combat-row-icon {
+	display: flex;
+	align-items: center;
+	width: auto;
+	height: auto;
+	color: inherit;
+}
+
+body[data-mc-orientation="landscape"] #combat-hud .combat-bar-track {
+	grid-area: 1 / 2;
+	height: max(0.35rem, calc(13 * var(--lf-u)));
+	border-radius: 999px;
+}
+
+body[data-mc-orientation="landscape"] #combat-hud .combat-row-value {
+	grid-area: 2 / 2;
+	justify-self: center;
+	font-size: max(0.4rem, calc(11 * var(--lf-u)));
+	font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================================
+   3. PLAYER COUNT - the existing .op-panel pill, under the vitals card
+   -------------------------------------------------------------------------
+   This is the same multiplayer panel as everywhere else, still collapsible,
+   still fed by MultiplayerClient.updateCount(). Landscape does not consume
+   --op-reserved: that variable is recomputed from a ResizeObserver, which
+   fires on SIZE and not on POSITION, so it can lag a frame behind a rotation.
+   Anchoring to --lf-et here makes the pill's placement a pure function of the
+   composition instead.
+   ========================================================================= */
+
+body.mobile-controls-active[data-mc-orientation="landscape"] .op-panel {
+	/* top: calc(var(--lf-et) + var(--lf-vitals-h) + 8 * var(--lf-u)) !important; */
+	left: var(--lf-el) !important;
+	right: auto !important;
+	bottom: auto !important;
+	width: var(--lf-pc-w) !important;
+	max-height: min(76vh, calc(760 * var(--lf-u))) !important;
+	/* z-index: var(--z-hud-chip, 9); */
+	z-index: 99;
+	margin-top: 5px;
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"] .op-toggle {
+	gap: calc(10 * var(--lf-u));
+	padding: calc(8 * var(--lf-u)) calc(12 * var(--lf-u));
+	font-size: max(0.55rem, calc(15 * var(--lf-u)));
+}
+
+/* =========================================================================
+   4. MAP / BAG - the existing utility buttons, above the dashboard
+   MENU has already been pinned out of this rail in section 1.
+   ========================================================================= */
+
+#mobile-controls[data-orientation="landscape"] .mc-util {
+	top: auto;
+	left: auto;
+	right: var(--lf-util-right);
+	bottom: var(--lf-util-bottom);
+	flex-direction: row;
+	gap: calc(10 * var(--lf-u));
+}
+
+#mobile-controls[data-orientation="landscape"]
+	:is(.mc-util-btn--map, .mc-util-btn--bag) {
+	width: var(--lf-util-w) !important;
+	height: var(--lf-util-h) !important;
+	min-width: 0;
+	min-height: 0;
+	flex-direction: row;
+	gap: calc(4 * var(--lf-u));
+	padding: 0 calc(6 * var(--lf-u));
+	font-size: max(0.42rem, calc(12 * var(--lf-u)));
+}
+
+/* Text-forward, as drawn - the icon would crowd a 66 x 34 tile. */
+#mobile-controls[data-orientation="landscape"]
+	:is(.mc-util-btn--map, .mc-util-btn--bag)
+	.mc-util-icon {
+	display: none;
+}
+
+#mobile-controls[data-orientation="landscape"]
+	:is(.mc-util-btn--map, .mc-util-btn--bag)
+	.mc-util-label {
+	font-size: max(0.42rem, calc(12 * var(--lf-u)));
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+/* =========================================================================
+   5. CHAT - bubble under the tile row, panel under the bubble
+   Existing ChatPanel design and behaviour; landscape placement only. Nothing
+   here touches history, send, show/hide, resize or keyboard handling.
+   ========================================================================= */
+
+body.mobile-controls-active[data-mc-orientation="landscape"] #chat-show {
+	position: fixed;
+	top: calc(var(--lf-et) + var(--lf-tile-h) + 24 * var(--lf-u));
+	right: var(--lf-er);
+	left: auto;
+	bottom: auto;
+	z-index: var(--z-chat-touch, 99);
+	min-width: max(2.75rem, calc(56 * var(--lf-u)));
+	height: var(--lf-bubble-h);
+	padding: 0 calc(12 * var(--lf-u));
+	border-radius: 999px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.25rem;
+	font-size: max(0.55rem, calc(14 * var(--lf-u)));
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"] #chat-panel {
+	top: var(--lf-chat-top) !important;
+	right: var(--lf-er) !important;
+	left: auto !important;
+	bottom: auto !important;
+	width: var(--lf-chat-w) !important;
+	z-index: var(--z-chat-touch, 99);
+
+	/* Hard ceiling: whatever size the player has chosen, the panel can never
+	   grow down into the GAS pedal. */
+	max-height: calc(258 * var(--lf-u)) !important;
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"] #chat-log {
+	max-height: calc(120 * var(--lf-u));
+}
+
+body[data-mc-orientation="landscape"] #objective-strip {
+	top: calc(var(--lf-et) + var(--lf-tile-h) + 10 * var(--lf-u)) !important;
+	left: var(--lf-el) !important;
+	right: auto !important;
+	transform: none !important;
+}
+
+body[data-mc-orientation="landscape"] #game-notice {
+	top: calc(var(--lf-et) + var(--lf-tile-h) + 70 * var(--lf-u)) !important;
+}
+
+/* The minimap is player-toggled (MAP), so it is not in the reference pages.
+   It docks on the left edge under the player-count pill, the one band the
+   composition leaves free. */
+body[data-mc-orientation="landscape"] #minimap-panel {
+	left: var(--lf-el) !important;
+	right: auto !important;
+	transform: none;
+	bottom: auto !important;
+	top: calc(
+		var(--lf-et) + var(--lf-vitals-h) + var(--lf-bubble-h) + 46 *
+			var(--lf-u)
+	) !important;
+}
+
+/* =========================================================================
+   6. BOTTOM-LEFT: THE STEERING PAIR
+   Existing round steering buttons, at the reference size and spacing.
+   ========================================================================= */
+
+#mobile-controls[data-orientation="landscape"] .mc-zone--left {
+	left: var(--lf-el);
+	bottom: calc(8 * var(--lf-u));
+	right: auto;
+	top: auto;
+	flex-direction: row;
+	align-items: flex-end;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-steer-cluster {
+	gap: var(--lf-steer-gap);
+	align-items: flex-end;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-steer-btn {
+	width: var(--lf-steer) !important;
+	height: var(--lf-steer) !important;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-steer-icon svg {
+	width: max(1.1rem, calc(52 * var(--lf-u)));
+	height: max(1.1rem, calc(52 * var(--lf-u)));
+}
+
+/* =========================================================================
+   7. BOTTOM-RIGHT: TURBO/TURRET | HAND BRAKE | GAS over BRAKE
+   -------------------------------------------------------------------------
+   The existing DOM is already in the right order for this:
+
+     .mc-hud-pedal_clusters   (row-reverse)
+       |- .mc-pedals          -> GAS over BRAKE   (right, outermost)
+       '- .mc-action-cluster  -> TURBO/TURRET column + HAND BRAKE
+
+   Both sub-groups bottom-align, which is what puts every control on the one
+   baseline the artwork draws.
+   ========================================================================= */
+
+#mobile-controls[data-orientation="landscape"] .mc-zone--right {
+	right: var(--lf-er);
+	bottom: calc(16 * var(--lf-u));
+	left: auto;
+	top: auto;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: calc(14 * var(--lf-u));
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-hud-pedal_clusters {
+	display: flex;
+	flex-direction: row-reverse;
+	align-items: flex-end;
+	gap: var(--lf-cluster-gap);
+}
+
+/* GAS sits above BRAKE; the clutch (manual only) takes the cell beside BRAKE
+   rather than making a three-high stack that would push GAS out of thumb
+   reach. In arcade the clutch is [hidden], so that column collapses to zero
+   and GAS/BRAKE stay hard against the right edge. */
+#mobile-controls[data-orientation="landscape"] .mc-pedals {
+	display: grid;
+	grid-template-columns: auto auto;
+	grid-template-rows: auto auto;
+	align-items: end;
+	justify-items: end;
+	gap: var(--lf-ped-gap);
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-pedal-accel {
+	grid-area: 1 / 2;
+	width: var(--lf-ped-w) !important;
+	height: var(--lf-gas-h) !important;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-pedal-brake {
+	grid-area: 2 / 2;
+	width: var(--lf-ped-w) !important;
+	height: var(--lf-brake-h) !important;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-pedal-clutch {
+	grid-area: 2 / 1;
+	width: var(--lf-ped-w) !important;
+	height: var(--lf-brake-h) !important;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-action-cluster {
+	display: grid;
+	grid-template-columns: var(--lf-act-w) var(--lf-hb-w);
+	grid-template-rows: var(--lf-turbo-h) var(--lf-turret-h);
+	align-items: stretch;
+	gap: var(--lf-act-gap) var(--lf-cluster-gap);
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-turbo-btn {
+	grid-area: 1 / 1;
+	width: 100% !important;
+	height: 100% !important;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-turret-btn {
+	grid-area: 2 / 1;
+	width: 100% !important;
+	height: 100% !important;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-handbrake-btn {
+	grid-area: 1 / 2 / 3 / 3;
+	width: 100% !important;
+	height: 100% !important;
+}
+
+/* Two words on two lines, as drawn. */
+#mobile-controls[data-orientation="landscape"]
+	.mc-handbrake-btn
+	.mc-pedal-label {
+	white-space: normal;
+	line-height: 1.1;
+	text-align: center;
+}
+
+#mobile-controls[data-orientation="landscape"] .mc-pedal-label {
+	font-size: max(0.5rem, calc(19 * var(--lf-u)));
+	letter-spacing: 0.03em;
+}
+
+#mobile-controls[data-orientation="landscape"]
+	:is(.mc-turbo-text, .mc-turret-text) {
+	font-size: max(0.5rem, calc(18 * var(--lf-u)));
+	letter-spacing: 0.03em;
+}
+
+/* The pedal/action faces are label-led at this size; the decorative glyphs
+   are the same ones the controls already use, just dropped where the
+   reference shows text only. */
+#mobile-controls[data-orientation="landscape"]
+	:is(.mc-pedal-icon, .mc-turbo-icon, .mc-turret-icon) {
+	display: none;
+}
+
+/* The manual H-shifter is not in the reference (which draws arcade). It keeps
+   its own slot on the deck floor, inboard of the action cluster, so it can
+   never sit under the dashboard. */
+#mobile-controls[data-orientation="landscape"] .mc-shifter {
+	position: absolute;
+	right: calc(
+		var(--lf-er) + var(--lf-ped-w) + var(--lf-hb-w) + var(--lf-act-w) + 3 *
+			var(--lf-cluster-gap)
+	);
+	left: auto;
+	bottom: calc(16 * var(--lf-u));
+	transform: none;
+}
+
+/* =========================================================================
+   8. BOTTOM-CENTRE: DASHBOARD + HOTBAR
+   -------------------------------------------------------------------------
+   The existing #hud / .dash markup and the existing two-slot ItemHotbar. No
+   second dashboard and no second hotbar: this is the same DOM the desktop
+   HUD uses, still fed by Game.frame(), restyled into the card the reference
+   draws.
+
+   The artwork centres the dash AND the hotbar as one group, with the dash
+   ending 93u right of centre and the hotbar starting 100u right of centre.
+   Anchoring each to 50% reproduces that without needing a shared wrapper.
+   ========================================================================= */
+
+body[data-mc-orientation="landscape"] #hud {
+	position: fixed;
+	top: auto !important;
+	bottom: calc(10 * var(--lf-u)) !important;
+	left: auto !important;
+	right: calc(50% - 93 * var(--lf-u)) !important;
+	transform: none !important;
+	width: auto !important;
+	max-width: none !important;
+	padding: 0 !important;
+	flex-direction: row !important;
+	align-items: flex-end !important;
+	justify-content: flex-end !important;
+	z-index: var(--z-hud, 4);
+}
+
+/* The reference draws the gauge as a free-standing dial overlapping a
+   separate info card, so the outer .dash wrapper stops being a card here and
+   .dash-info-col becomes one. Same elements, same data. */
+body[data-mc-orientation="landscape"] #hud .dash {
+	width: var(--lf-dash-w) !important;
+	max-width: none !important;
+	padding: 0 !important;
+	gap: 0 !important;
+	border: 0 !important;
+	background: none !important;
+	box-shadow: none !important;
+	backdrop-filter: none !important;
+	flex-direction: row !important;
+	align-items: center !important;
+	justify-content: flex-end !important;
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-cluster {
+	flex-direction: row !important;
+	align-items: center;
+	gap: 0;
+	width: 100%;
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-gauge--speed {
+	flex: 0 0 auto;
+	margin-right: var(--lf-gauge-overlap);
+	position: relative;
+	z-index: 1;
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-gauge-ring {
+	width: var(--lf-gauge);
+	height: var(--lf-gauge);
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-gauge-title {
+	display: none;
+}
+
+/* Arcade already hides the engine pill (.dash[data-mode="arcade"] in
+   style.css). Manual does not, and it is not in the reference card - without
+   this it would auto-place itself as a stray grid item in the row below the
+   gear. */
+body[data-mc-orientation="landscape"] #hud .dash-engine-pill {
+	display: none !important;
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-speed-value {
+	font-size: max(0.9rem, calc(38 * var(--lf-u)));
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-speed-unit {
+	font-size: max(0.34rem, calc(9 * var(--lf-u)));
+}
+
+/* Row 1 of the card is ARCADE | RPM | GEAR. #gear-mode and #gear live inside
+   .dash-gear-badge, so the badge is promoted with display:contents and its
+   two children take grid cells directly - the same technique portrait uses on
+   .mc-corner-actions. That keeps one gear element, not two. */
+body[data-mc-orientation="landscape"] #hud .dash-info-col {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	column-gap: calc(10 * var(--lf-u));
+	row-gap: calc(7 * var(--lf-u));
+	width: var(--lf-info-w);
+	padding: calc(11 * var(--lf-u)) calc(14 * var(--lf-u)) calc(11 * var(--lf-u))
+		calc(76 * var(--lf-u));
+	border: 1px solid #ffffff22;
+	border-radius: calc(10 * var(--lf-u));
+	background: linear-gradient(160deg, #16212ef2, #0b1521f5);
+	box-shadow: 0 calc(10 * var(--lf-u)) calc(26 * var(--lf-u)) -8px #000000a0;
+	backdrop-filter: blur(10px);
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-gear-badge {
+	display: contents;
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-gear-mode {
+	grid-area: 1 / 1;
+	font-size: max(0.46rem, calc(15 * var(--lf-u)));
+	letter-spacing: 0.05em;
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-gear-value {
+	grid-area: 1 / 3;
+	justify-self: end;
+	font-size: max(0.6rem, calc(20 * var(--lf-u)));
+}
+
+body[data-mc-orientation="landscape"] #hud .dash-rpm-value {
+	grid-area: 1 / 2;
+	justify-self: center;
+	font-size: max(0.4rem, calc(12 * var(--lf-u)));
+	font-variant-numeric: tabular-nums;
+}
+
+body[data-mc-orientation="landscape"]
+	#hud
+	:is(.dash-boost-row, .dash-battery-row, .dash-rpm-row, .dash-clutch-row) {
+	grid-column: 1 / -1;
+	gap: calc(8 * var(--lf-u));
+	font-size: max(0.34rem, calc(10 * var(--lf-u)));
+}
+
+body[data-mc-orientation="landscape"]
+	#hud
+	:is(
+		.dash-boost-label,
+		.dash-battery-label,
+		.dash-rpm-label,
+		.dash-clutch-label
+	) {
+	font-size: max(0.34rem, calc(10 * var(--lf-u)));
+	letter-spacing: 0.06em;
+	min-width: calc(46 * var(--lf-u));
+}
+
+body[data-mc-orientation="landscape"]
+	#hud
+	:is(
+		.dash-boost-track,
+		.dash-battery-track,
+		.dash-rpm-track,
+		.dash-clutch-track
+	) {
+	height: max(0.3rem, calc(9 * var(--lf-u)));
+	border-radius: 999px;
+}
+
+body[data-mc-orientation="landscape"]
+	#hud
+	:is(.dash-battery-percent, .dash-rpm-bar-value) {
+	font-size: max(0.32rem, calc(9 * var(--lf-u)));
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- hotbar: to the right of the dash, on the dash's own baseline ---- */
+
+body.mobile-controls-active[data-mc-orientation="landscape"] .hotbar {
+	top: auto;
+	bottom: calc(39 * var(--lf-u));
+	left: calc(50% + 100 * var(--lf-u));
+	right: auto;
+	transform: none;
+	display: flex;
+	flex-direction: row;
+	gap: var(--lf-slot-gap);
+	z-index: var(--z-hotbar-touch, 55);
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"] .hotbar-slot {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: calc(2 * var(--lf-u));
+	width: var(--lf-slot-w);
+	height: var(--lf-slot-h);
+	min-width: 0;
+	min-height: 0;
+	padding: calc(5 * var(--lf-u)) calc(4 * var(--lf-u));
+	text-align: center;
+	overflow: hidden;
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"] .hotbar-key {
+	display: none;
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"] .hotbar-icon {
+	grid-row: auto;
+	font-size: max(0.8rem, calc(22 * var(--lf-u)));
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"] .hotbar-name {
+	font-size: max(0.38rem, calc(11 * var(--lf-u)));
+	letter-spacing: 0.02em;
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"] .hotbar-qty {
+	font-size: max(0.36rem, calc(10 * var(--lf-u)));
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"]
+	:is(.hotbar-name, .hotbar-qty) {
+	width: 100%;
+	text-align: center;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The interact button shares the right zone with the pedals; keep it above
+   them rather than beside GAS. */
+#mobile-controls[data-orientation="landscape"] .mc-interact-btn {
+	align-self: flex-end;
+	font-size: max(0.42rem, calc(12 * var(--lf-u)));
+}
+
+/* =========================================================================
+   9. HUD PRESETS
+   -------------------------------------------------------------------------
+   The existing HudVisibility model writes body[data-hud-mode]; this section
+   is only CSS reacting to it. No second visibility system.
+
+   Several generic rules elsewhere hide things that the landscape reference
+   still draws (style.css hides .dash-boost-row and .dash-rpm-value on every
+   touch layout, and hides the XP row in SIMPLIFIED). Those are re-shown here
+   rather than edited at source, because portrait and desktop still want them
+   hidden.
+   ========================================================================= */
+
+/* ---- DEFAULT (page 1) ------------------------------------------------- */
+
+body[data-mc-orientation="landscape"][data-hud-mode="default"]
+	#hud
+	:is(.dash-boost-row, .dash-battery-row) {
+	display: flex !important;
+}
+
+body[data-mc-orientation="landscape"][data-hud-mode="default"]
+	#hud
+	.dash-rpm-value {
+	display: block !important;
+}
+
+/* The dial carries RPM on page 1, so the bar form stays out of the card. */
+body[data-mc-orientation="landscape"][data-hud-mode="default"]
+	#hud
+	.dash-rpm-row {
+	display: none !important;
+}
+
+/* ---- SIMPLIFIED (page 2) ----------------------------------------------
+   The dial is dropped and the card becomes the whole dashboard: ARCADE /
+   gear on row 1, then the RPM, boost and battery bars. The vitals card, the
+   player count, chat, MAP/BAG and every driving control stay - this is a
+   deliberate visibility state, not a shrunken page 1.
+   ----------------------------------------------------------------------- */
+
+body[data-mc-orientation="landscape"][data-hud-mode="simplified"]
+	#hud
+	.dash-gauge--speed {
+	display: none !important;
+}
+
+body[data-mc-orientation="landscape"][data-hud-mode="simplified"]
+	#hud
+	.dash-info-col {
+	width: var(--lf-dash-simple-w);
+	padding-left: calc(14 * var(--lf-u));
+}
+
+body[data-mc-orientation="landscape"][data-hud-mode="simplified"]
+	#hud
+	:is(.dash-boost-row, .dash-battery-row, .dash-rpm-row) {
+	display: flex !important;
+}
+
+/* The bar carries the RPM number on page 2, so the standalone text is out. */
+body[data-mc-orientation="landscape"][data-hud-mode="simplified"]
+	#hud
+	.dash-rpm-value {
+	display: none !important;
+}
+
+/* Page 2 still shows the LV row, so the generic SIMPLIFIED rule that drops it
+   is reversed for landscape (portrait-fix.css does the same). */
+body[data-mc-orientation="landscape"][data-hud-mode="simplified"]
+	#combat-hud
+	.combat-row:has(#player-xp-fill) {
+	display: grid !important;
+}
+
+/* Page 2 centres the dash and puts one consumable on each side of it. The
+   hotbar is the same two-slot element; space-between is what splits it. */
+body[data-mc-orientation="landscape"][data-hud-mode="simplified"] #hud {
+	right: calc(50% - 139 * var(--lf-u)) !important;
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"][data-hud-mode="simplified"]
+	.hotbar {
+	left: 50%;
+	transform: translateX(-50%);
+	width: var(--lf-simple-bar-w);
+	justify-content: space-between;
+	bottom: calc(14 * var(--lf-u));
+}
+
+body[data-mc-orientation="landscape"][data-hud-mode="simplified"] .mc-util {
+	--lf-util-right: calc(50% - 66 * var(--lf-u));
+	--lf-util-bottom: max(calc(126 * var(--lf-u)), var(--lf-util-clear));
+	right: var(--lf-util-right);
+	bottom: var(--lf-util-bottom);
+}
+
+/* ---- HIDE ALL (page 3) ------------------------------------------------
+   Page 3 keeps the vitals card, the four top tiles, the steering pair, the
+   pedals, the action cluster and the consumables. It drops the dashboard,
+   MAP/BAG, the player count and chat.
+
+   Nothing that the player needs to get BACK is hidden: MENU, the HUD toggle,
+   CHANGE VIEW and Fullscreen are all still on screen and still tappable, so
+   the mode can always be cycled onward.
+   ----------------------------------------------------------------------- */
+
+body[data-mc-orientation="landscape"][data-hud-mode="hidden"] #combat-hud {
+	display: block !important;
+}
+
+body[data-mc-orientation="landscape"][data-hud-mode="hidden"] #hud {
+	display: none !important;
+}
+
+body[data-mc-orientation="landscape"][data-hud-mode="hidden"]
+	:is(.mc-util-btn--map, .mc-util-btn--bag) {
+	display: none !important;
+}
+
+body.mobile-controls-active[data-mc-orientation="landscape"][data-hud-mode="hidden"]
+	:is(.op-panel, #chat-panel, #chat-show, #objective-strip) {
+	display: none !important;
+}
+
+/* The consumables survive HIDE ALL - they are gameplay controls, not HUD
+   readings - and move inboard of the action cluster where the dash was. */
+body.mobile-controls-active[data-mc-orientation="landscape"][data-hud-mode="hidden"]
+	.hotbar {
+	left: auto;
+	right: calc(437 * var(--lf-u));
+	transform: none;
+	width: auto;
+	justify-content: flex-start;
+	bottom: calc(14 * var(--lf-u));
+}
+
+/* =========================================================================
+   10. SHORT / NARROW LANDSCAPE
+   -------------------------------------------------------------------------
+   --lf-u already tracks both axes, so this only handles the point where the
+   touch-target floors start to crowd the passive readouts: drop the dial and
+   the hotbar captions rather than letting anything overlap.
+   ========================================================================= */
+
+@media (orientation: landscape) and (max-height: 380px) {
+	body[data-mc-orientation="landscape"][data-hud-mode="default"]
+		#hud
+		.dash-gauge--speed {
+		display: none;
+	}
+
+	body[data-mc-orientation="landscape"][data-hud-mode="default"]
+		#hud
+		.dash-info-col {
+		padding-left: calc(14 * var(--lf-u));
+	}
+
+	body.mobile-controls-active[data-mc-orientation="landscape"] .hotbar-name {
+		display: none;
+	}
+}

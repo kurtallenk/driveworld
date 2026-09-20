@@ -168,13 +168,27 @@ export class SettingsMenu {
     this.previousFocus = document.activeElement;
     this.isOpen = true;
     this.element.hidden = false;
+
+    // Being the top layer is not enough on its own: the window is centred,
+    // so live game UI still shows around it, and an exposed steering button
+    // would happily take a tap meant for the backdrop. ui/layers.css turns
+    // this class into a pointer-events lock on every non-modal layer.
+    document.body.classList.add("menu-open");
+
     this.closeButton.focus();
   }
 
   close() {
     this.isOpen = false;
     this.element.hidden = true;
-    this.previousFocus?.focus();
+
+    document.body.classList.remove("menu-open");
+
+    // Only restore focus to something still in the document: whatever
+    // opened the menu may have been moved or hidden since (the mobile MENU
+    // tile, for instance, is hidden by some HUD presets).
+    if (this.previousFocus?.isConnected) this.previousFocus.focus();
+    else this.openButton?.focus?.();
   }
 
   trapFocus(event) {

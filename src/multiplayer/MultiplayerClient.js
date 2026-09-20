@@ -258,6 +258,8 @@ export class MultiplayerClient {
       // playable, this time without a server).
       this.game.targetSystem?.disableNetworkedMode();
       this.game.playerHealth?.disableNetworkedMode();
+      this.game.loot?.disableNetworkedMode();
+      this.game.interactions?.clear();
 
       if (!this.running) return;
 
@@ -313,6 +315,19 @@ export class MultiplayerClient {
       // local simulations and just render whatever the server reports.
       this.game.targetSystem?.enableNetworkedMode();
       this.game.playerHealth?.enableNetworkedMode();
+
+      // World loot is authoritative too from here on (see server/LootWorld.js)
+      // -- but ONLY if this server actually runs a LootWorld. A server build
+      // without loot support sends no `pickups` list, and in that case the
+      // client must keep rolling its own drops instead of waiting forever for
+      // broadcasts that will never arrive (which looked like "enemies drop
+      // nothing at all").
+      const serverOwnsLoot = Array.isArray(message.pickups);
+
+      this.game.loot?.enableNetworkedMode({
+        serverAuthoritative: serverOwnsLoot
+      });
+      this.game.loot?.applyServerPickups(message.pickups ?? []);
 
       // New player joining receives the CURRENT enemy world in this same
       // message, not an empty/fresh one (requirement #8).
@@ -393,6 +408,39 @@ export class MultiplayerClient {
 
     if (message.type === "enemyKilled") {
       this.game.handleEnemyKilled?.(message);
+      return;
+    }
+
+    // ---- Server-authoritative world loot -------------------------------
+    // Every client receives the same three messages, so every client
+    // converges on the same set of world pickups.
+
+    if (message.type === "pickups") {
+      this.game.loot?.applyServerPickups(message.pickups ?? []);
+      return;
+    }
+
+    if (message.type === "pickupSpawn") {
+      this.game.loot?.spawnFromServer(message.pickup);
+      return;
+    }
+
+    if (message.type === "pickupRemoved") {
+      // Whoever won the race, everybody else's copy disappears here -- and
+      // the interaction prompt goes with it if it was pointing at this one.
+      this.game.handlePickupRemoved?.(message.pickupId, message.reason);
+      return;
+    }
+
+    if (message.type === "pickupGranted") {
+      // Only the winner gets this, and only the server can send it, so the
+      // inventory is never credited from a local guess.
+      this.game.handlePickupGranted?.(message.pickupId, message.itemId);
+      return;
+    }
+
+    if (message.type === "pickupDenied") {
+      this.game.handlePickupDenied?.(message.pickupId, message.reason);
       return;
     }
 
@@ -569,6 +617,26 @@ export class MultiplayerClient {
       enemyId,
       damage
     }));
+  }
+
+  // Asks the server for a pickup. The client never removes the world item
+  // itself -- it waits for pickupGranted / pickupRemoved.
+  sendPickupRequest(pickupId) {
+    if (
+      !this.running ||
+      !this.selfId ||
+      !pickupId ||
+      this.socket?.readyState !== WebSocket.OPEN
+    ) {
+      return false;
+    }
+
+    this.socket.send(JSON.stringify({
+      type: "pickupRequest",
+      pickupId
+    }));
+
+    return true;
   }
 
   reportDelivery() {

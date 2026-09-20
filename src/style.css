@@ -25,7 +25,8 @@ canvas {
   place-items: center;
   overflow: hidden;
   background: #0a1019;
-  z-index: 10;
+  /* Layer tokens are declared in ui/layers.css. */
+  z-index: var(--z-boot, 950);
 }
 
 #loading[hidden], #hud[hidden] { display: none; }
@@ -512,6 +513,53 @@ button:disabled {
   border-radius: 999px;
   background: linear-gradient(90deg, #f5d68a, #ffce7a);
   transition: width 0.1s ease-out;
+}
+
+/* RPM bar. Built from exactly the same tokens as the clutch/boost/battery
+   rows above so it reads as part of the existing dashboard. It is off by
+   default everywhere; only the portrait SIMPLIFIED preset turns it on, because
+   that is the only layout that drops the speedometer dial. */
+.dash-rpm-row {
+  display: none;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.dash-rpm-label {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  color: #9fb4c6;
+}
+
+.dash-rpm-track {
+  flex: 1 1 auto;
+  height: 0.4rem;
+  min-width: 40px;
+  border-radius: 999px;
+  background: #ffffff1a;
+  overflow: hidden;
+}
+
+.dash-rpm-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4a8fe0, #6fd0ff);
+  transition: width 0.1s ease-out, background 0.2s ease;
+}
+
+.dash-rpm-bar-fill.dash-rpm-redline {
+  background: linear-gradient(90deg, #ff6c65, #ff9a8f);
+}
+
+.dash-rpm-bar-value {
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #9fb4c6;
+  font-variant-numeric: tabular-nums;
 }
 
 .dash-boost-row {
@@ -1148,7 +1196,7 @@ button:disabled {
 #death-screen {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: var(--z-screen-effect, 300);
   display: grid;
   place-items: center;
   background: radial-gradient(ellipse at center, #1a0505d9 0%, #05070ae6 70%);
@@ -1614,10 +1662,12 @@ body[data-hud-mode="hidden"] #combat-hud {
   display: none;
 }
 
+/* The top interactive layer. ui/layers.css holds the whole scale and the
+   body.menu-open interaction lock that goes with this. */
 #settings-menu {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: var(--z-modal, 900);
   display: grid;
   place-items: center;
   padding: calc(env(safe-area-inset-top, 0px) + 1rem)
@@ -3016,7 +3066,7 @@ body.mobile-controls-active .mc-corner-actions {
   .kbd-panel { padding: 0.6rem 0.7rem; }
 
   .op-panel {
-    top: calc(env(safe-area-inset-top, 0px) + 4rem);
+    /* top: calc(env(safe-area-inset-top, 0px) + 4rem); */
     width: min(170px, calc(100vw - 1.6rem));
     font-size: 0.75rem;
   }
@@ -3235,7 +3285,7 @@ body.mobile-controls-active .mc-corner-actions {
   }
 
   .op-panel {
-    top: calc(env(safe-area-inset-top, 0px) + 3.2rem);
+    /* top: calc(env(safe-area-inset-top, 0px) + 3.2rem); */
     max-height: 50vh;
     font-size: 0.72rem;
   }

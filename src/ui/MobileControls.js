@@ -35,6 +35,7 @@ export class MobileControls {
     this.buildDOM();
     this.bindSteering();
     this.bindCornerActions();
+    this.bindUtilActions();
     this.bindPedal(this.accelEl, "throttle");
     this.bindPedal(this.brakeEl, "brake");
     this.bindPedal(this.clutchEl, "clutch");
@@ -211,8 +212,11 @@ export class MobileControls {
     
 
     // Handbrake
+    // Two words, not one: portrait sets this control in a narrow tile and
+    // wraps the label onto two lines (see ui/portrait-fix.css). Landscape
+    // still truncates single-line, exactly as it did before.
     this.handbrakeEl = this.makePedal(
-      "HANDBRAKE",
+      "HAND BRAKE",
       "mc-handbrake-btn",
       ICON_HANDBRAKE
     );
@@ -340,13 +344,83 @@ export class MobileControls {
     // ROOT DOM
     // ---------------------------------------------------------------
 
+    // -----------------------------------------------------------------
+    // UTILITY RAIL: map / inventory / pause.
+    //
+    // Deliberately placed in their own rail, away from the driving
+    // controls, so they can never be hit while steering or braking. Each
+    // one only calls back out (see setActions) -- this class never owns
+    // map/inventory/pause state itself.
+    // -----------------------------------------------------------------
+
+    this.utilEl = document.createElement("div");
+    this.utilEl.className = "mc-util";
+
+    this.mapBtnEl = this.makeUtilButton(
+      "map",
+      "Map",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zm0 0v14m6-12v14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+    );
+
+    this.inventoryBtnEl = this.makeUtilButton(
+      "bag",
+      "Bag",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.3 11.2a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 8zm4.5 0V6.2A3.2 3.2 0 0 1 11.7 3h.6A3.2 3.2 0 0 1 15.5 6.2V8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+    );
+
+    this.pauseBtnEl = this.makeUtilButton(
+      "pause",
+      "Menu",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+    );
+
+    this.utilEl.append(
+      this.mapBtnEl,
+      this.inventoryBtnEl,
+      this.pauseBtnEl
+    );
+
+    // -----------------------------------------------------------------
+    // INTERACTION BUTTON
+    //
+    // Hidden unless something is actually in range (see
+    // setInteraction()). It sits above the pedal column, inside easy
+    // right-thumb reach but with its own clear spacing so it can never be
+    // confused with GAS.
+    // -----------------------------------------------------------------
+
+    this.interactEl = document.createElement("button");
+    this.interactEl.type = "button";
+    this.interactEl.className = "mc-interact-btn";
+    this.interactEl.hidden = true;
+    this.interactEl.innerHTML =
+      '<span class="mc-interact-icon" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '</span>' +
+      '<span class="mc-interact-text">TAP TO PICK UP</span>';
+
+    // -----------------------------------------------------------------
+    // ZONES
+    //
+    // Landscape and portrait share this markup but are laid out by two
+    // completely separate CSS compositions (see ui/mobile.css) keyed off
+    // #mobile-controls[data-orientation].
+    // -----------------------------------------------------------------
+
+    this.leftZoneEl = document.createElement("div");
+    this.leftZoneEl.className = "mc-zone mc-zone--left";
+    this.leftZoneEl.append(this.steeringEl);
+
+    this.rightZoneEl = document.createElement("div");
+    this.rightZoneEl.className = "mc-zone mc-zone--right";
+    this.rightZoneEl.append(this.interactEl, this.pedal_clusters);
+
     this.root.append(
-      this.steeringEl,
-      this.pedal_clusters,
-      // this.pedalsEl,
-      // this.actionClusterEl,
-      this.shifterEl,
+      this.utilEl,
       this.hudTopActionsEl,
+      this.leftZoneEl,
+      this.rightZoneEl,
+      this.shifterEl,
       this.orientationEl
     );
 
@@ -365,6 +439,62 @@ export class MobileControls {
       `<span class="mc-pedal-label">${label}</span>`;
 
     return el;
+  }
+
+  // Utility-rail button (map / inventory / pause). Same visual family as
+  // the corner buttons, but a larger touch target and always labelled,
+  // because these are deliberate taps rather than driving inputs.
+  makeUtilButton(name, label, icon) {
+    const el = document.createElement("button");
+
+    el.type = "button";
+    el.className = `mc-util-btn mc-util-btn--${name}`;
+    el.dataset.util = name;
+    el.setAttribute("aria-label", label);
+
+    el.innerHTML =
+      `<span class="mc-util-icon" aria-hidden="true">${icon}</span>` +
+      `<span class="mc-util-label">${label}</span>`;
+
+    return el;
+  }
+
+  // -----------------------------------------------------------------
+  // UTILITY + INTERACTION BINDINGS
+  // -----------------------------------------------------------------
+
+  bindUtilActions() {
+    this._onMap = null;
+    this._onInventory = null;
+    this._onPause = null;
+    this._onInteract = null;
+
+    this.mapBtnEl.addEventListener("click", () => this._onMap?.());
+    this.inventoryBtnEl.addEventListener("click", () => this._onInventory?.());
+    this.pauseBtnEl.addEventListener("click", () => this._onPause?.());
+    this.interactEl.addEventListener("click", () => this._onInteract?.());
+  }
+
+  // Shows/hides the touch interaction button. `label` comes from whatever
+  // the player is actually standing next to, so this class never invents
+  // prompt text of its own.
+  setInteraction(available, label = "TAP TO PICK UP") {
+    if (!this.interactEl) return;
+
+    this.interactEl.hidden = !available;
+
+    const text = this.interactEl.querySelector(".mc-interact-text");
+    if (text && available) text.textContent = label;
+  }
+
+  // Mirrors the desktop inventory panel's open state onto the bag button
+  // so the control reads as a toggle rather than a one-way action.
+  setInventoryOpen(open) {
+    this.inventoryBtnEl?.classList.toggle("mc-util-btn--on", Boolean(open));
+  }
+
+  setMapOpen(open) {
+    this.mapBtnEl?.classList.toggle("mc-util-btn--on", Boolean(open));
   }
 
   // ---------------------------------------------------------------
@@ -387,6 +517,10 @@ export class MobileControls {
       this.active
     );
 
+    document.body.dataset.mcOrientation = this.active
+      ? (this.orientation ?? "landscape")
+      : "";
+
     if (!this.active) {
       this.releaseAllPedals();
       this.resetSteering();
@@ -407,8 +541,13 @@ export class MobileControls {
 
     const manual = mode === "manual";
 
+    // Arcade shows accelerator + brake only; clutch and the H-shifter are
+    // manual-only controls and are removed from the layout entirely (not
+    // just dimmed) so they cannot be tapped by accident.
     this.clutchEl.hidden = !manual;
     this.shifterEl.hidden = !manual;
+
+    this.root.dataset.mode = mode;
 
     if (!manual) {
       this.clutchEl.classList.remove(
@@ -628,7 +767,11 @@ export class MobileControls {
 
   setActions({
     onFullscreen,
-    onCamera
+    onCamera,
+    onMap,
+    onInventory,
+    onPause,
+    onInteract
   } = {}) {
     this._onFullscreen =
       onFullscreen ??
@@ -637,6 +780,11 @@ export class MobileControls {
     this._onCamera =
       onCamera ??
       this._onCamera;
+
+    this._onMap = onMap ?? this._onMap;
+    this._onInventory = onInventory ?? this._onInventory;
+    this._onPause = onPause ?? this._onPause;
+    this._onInteract = onInteract ?? this._onInteract;
   }
 
   setFullscreenActive(active) {
@@ -1165,57 +1313,209 @@ export class MobileControls {
   // ORIENTATION
   // ---------------------------------------------------------------
 
-  bindOrientation() {
-    const check = () => {
-      if (!this.active) {
-        this.orientationEl.classList.remove(
-          "mc-visible"
-        );
+  // ---------------------------------------------------------------
+  // ORIENTATION / LAYOUT ENGINE
+  // ---------------------------------------------------------------
+  // Portrait and landscape are two INDEPENDENT compositions (see
+  // ui/mobile.css). Everything below is recomputed from the LIVE viewport
+  // on every resize / orientationchange / visual-viewport change, so a
+  // rotation genuinely reflows the interface instead of rescaling the
+  // previous layout.
+  //
+  // The decision is made here, in JS, and published as data-attributes +
+  // CSS custom properties, so the CSS layout and the JS-measured geometry
+  // (the H-shifter rail) can never disagree the way separate media
+  // queries would.
+  // ---------------------------------------------------------------
 
+  // ---------------------------------------------------------------
+  // WHY THIS READS THE *LAYOUT* VIEWPORT
+  // ---------------------------------------------------------------
+  // This used to read window.visualViewport and publish it as --mc-vw /
+  // --mc-vh. That was the cause of the "portrait shrinks after a rotation"
+  // bug: ui/portrait-fix.css derives its entire scale from one number,
+  //
+  //     --pf-u: min(calc(var(--mc-vw) / 412), 1.15px)
+  //
+  // and --pf-u multiplies every portrait offset, size and font. But the
+  // VISUAL viewport is the layout viewport divided by the current page
+  // scale, and it also shrinks under the on-screen keyboard. A rotation is
+  // exactly the event that can leave a residual page scale behind, so
+  // landscape -> portrait came back reporting LESS than the real layout
+  // width, --pf-u shrank with it, and the whole portrait UI shrank in
+  // proportion -- permanently, because nothing fired afterwards to correct
+  // it. First load looked right only because the page scale starts at 1.
+  //
+  // document.documentElement.clientWidth/clientHeight is the CSS layout
+  // viewport: immune to pinch-zoom, page scale and the virtual keyboard, and
+  // it is the same box `@media (max-width: ...)` evaluates against -- so the
+  // media query in portrait-fix.css and --pf-u can no longer disagree about
+  // how wide the phone is.
+  //
+  // The visual viewport is still measured, but it is published separately as
+  // --mc-visual-vh and never feeds a control scale.
+  measureViewport() {
+    const doc = document.documentElement;
+    const vv = window.visualViewport;
+
+    const width = Math.round(
+      doc?.clientWidth || window.innerWidth || vv?.width || 0
+    );
+
+    const height = Math.round(
+      doc?.clientHeight || window.innerHeight || vv?.height || 0
+    );
+
+    const visualHeight = Math.round(vv?.height || height);
+
+    return { width, height, visualHeight, portrait: height >= width };
+  }
+
+  // Mobile browsers report a box from the orientation they are LEAVING while
+  // the rotation animation runs. Latching one of those frames is the other
+  // half of the stale-layout problem, so a measurement is only accepted once
+  // it agrees with what the browser itself calls the current orientation.
+  measurementIsSettled(portrait) {
+    const query = window.matchMedia?.("(orientation: portrait)");
+    if (!query) return true;
+
+    return query.matches === portrait;
+  }
+
+  applyLayout() {
+    const { width, height, visualHeight, portrait } = this.measureViewport();
+
+    if (!width || !height) return;
+
+    // Drop transitional mid-rotation frames rather than publishing them. The
+    // retry cap keeps this from ever becoming a rAF loop if matchMedia and
+    // the measured box disagree persistently (a square viewport, say).
+    if (!this.measurementIsSettled(portrait)) {
+      this._settleRetries = (this._settleRetries ?? 0) + 1;
+
+      if (this._settleRetries <= 8) {
+        this.scheduleLayout();
         return;
       }
+    }
 
-      const portrait =
-        window.innerHeight >
-        window.innerWidth;
+    this._settleRetries = 0;
 
-      const needsLandscape =
-        this.mode === "manual";
+    this.viewportWidth = width;
+    this.viewportHeight = height;
+    this.orientation = portrait ? "portrait" : "landscape";
 
-      this.orientationEl.classList.toggle(
-        "mc-visible",
-        portrait &&
-        needsLandscape
-      );
+    // The legacy "rotate your device" gate stays permanently hidden:
+    // portrait is a fully supported layout now. The element is kept so
+    // nothing referencing it throws.
+    this.orientationEl?.classList.remove("mc-visible");
+
+    // Layout-viewport size exposed to CSS. Every pass rewrites these from
+    // freshly measured absolutes, so repeated rotation is idempotent:
+    // nothing accumulates and no previous orientation's value survives.
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty("--mc-vw", `${width}px`);
+    rootStyle.setProperty("--mc-vh", `${height}px`);
+
+    // The genuinely-visible box, for the few rules that want it (chat's
+    // ceiling). Deliberately NOT --mc-vh: nothing that sizes a control may
+    // depend on a value that moves when the keyboard opens.
+    rootStyle.setProperty("--mc-visual-vh", `${visualHeight}px`);
+
+    // Control scale bucket, derived from the real viewport rather than a
+    // media query so it always matches the orientation decided here.
+    const shortest = Math.min(width, height);
+
+    const size =
+      shortest <= 340 ? "xs" :
+      shortest <= 400 ? "sm" :
+      shortest <= 520 ? "md" : "lg";
+
+    this.root.dataset.orientation = this.orientation;
+    this.root.dataset.size = size;
+
+    // Short landscape phones get a denser variant of the landscape layout.
+    this.root.dataset.compact =
+      !portrait && height <= 480 ? "true" : "false";
+
+    // Page-level signals for the HUD rules that reflow around this layer.
+    document.body.dataset.mcOrientation = this.active ? this.orientation : "";
+    document.body.dataset.mcSize = this.active ? size : "";
+
+    // The portrait deck is arranged differently for arcade and manual (manual
+    // adds a clutch pedal and the H-shifter), and those rules live on <body>
+    // because they also have to combine with body[data-hud-mode]. Published
+    // here rather than read off #mobile-controls so a single selector can
+    // match both signals without :has().
+    document.body.dataset.mcMode = this.active ? this.mode : "";
+
+    // Geometry-positioned widgets must be re-placed after any reflow or
+    // they end up off their rail.
+    if (this.active && this.mode === "manual") {
+      requestAnimationFrame(() => this.centerShifterKnob?.());
+    }
+  }
+
+  // Coalesces bursts of resize/scroll events into one layout pass per frame.
+  scheduleLayout() {
+    if (this._layoutFrame) cancelAnimationFrame(this._layoutFrame);
+
+    this._layoutFrame = requestAnimationFrame(() => {
+      this._layoutFrame = null;
+      this.applyLayout();
+    });
+  }
+
+  bindOrientation() {
+    const check = () => this.scheduleLayout();
+
+    window.addEventListener("resize", check);
+
+    // Mobile browsers report stale dimensions while the rotation
+    // animation is still running, so re-measure as it settles instead of
+    // trusting the single event.
+    const settle = () => {
+      check();
+      for (const delay of [50, 150, 350, 600]) setTimeout(check, delay);
     };
 
-    window.addEventListener(
-      "resize",
-      check
-    );
+    window.addEventListener("orientationchange", settle);
 
-    window.addEventListener(
-      "orientationchange",
-      check
-    );
+    try {
+      window.screen?.orientation?.addEventListener?.("change", settle);
+    } catch {
+      /* Safari <16.4 has no ScreenOrientation events; the listeners
+         above already cover it. */
+    }
 
-    this._checkOrientation =
-      check;
+    // Browser chrome hiding/showing changes the usable viewport without
+    // always firing a window resize.
+    window.visualViewport?.addEventListener("resize", check);
+    window.visualViewport?.addEventListener("scroll", check);
 
-    const originalSetActive =
-      this.setActive.bind(this);
+    if (typeof ResizeObserver !== "undefined") {
+      this._viewportObserver = new ResizeObserver(check);
+      this._viewportObserver.observe(document.documentElement);
+    }
+
+    this.orientation = "landscape";
+
+    this.applyLayout();
+
+    this._checkOrientation = check;
+
+    const originalSetActive = this.setActive.bind(this);
 
     this.setActive = active => {
       originalSetActive(active);
-      check();
+      this.applyLayout();
     };
 
-    const originalSetMode =
-      this.setDrivingMode.bind(this);
+    const originalSetMode = this.setDrivingMode.bind(this);
 
     this.setDrivingMode = mode => {
       originalSetMode(mode);
-      check();
+      this.applyLayout();
     };
   }
 }

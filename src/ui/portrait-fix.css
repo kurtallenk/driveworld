@@ -1,0 +1,1163 @@
+/* ---------------------------------------------------------------------------
+   DRIVEWORLD - PORTRAIT COMPOSITION (v5, follows the supplied PDF mockups)
+   ---------------------------------------------------------------------------
+   Loaded LAST (see main.js), so it is the final word on portrait geometry.
+
+   No control is created or redesigned here. Every button, panel and readout
+   keeps the look it already has elsewhere in the project; this file only
+   decides WHERE each one sits in portrait, and which of them each HUD preset
+   shows. Nothing below can match landscape or desktop.
+
+   ---------------------------------------------------------------------------
+   THE UNIT SYSTEM
+   ---------------------------------------------------------------------------
+   The reference pages are authored at 412 x 687 CSS px. Every offset and size
+   below is the measurement taken off that artwork multiplied by --pf-u, so
+   the composition scales with the phone instead of being pinned to one width.
+   --mc-vw is the LIVE viewport width published by
+   MobileControls.applyLayout(), so this tracks browser-chrome changes too.
+
+   Individual controls then get a max() floor so labels stay legible and touch
+   targets stay usable on small phones. Because the left group is anchored to
+   the left edge and the right group to the right edge, the gap between them
+   absorbs whatever those floors add - the deck cannot overflow the viewport.
+
+   ---------------------------------------------------------------------------
+   THE COMPOSITION
+   ---------------------------------------------------------------------------
+     top-left      HP / LV card                     (#combat-hud)
+     top-right     CHANGE VIEW | MENU               2 x 2 tile grid
+                   Fullscreen  | HUD: <MODE>
+     right         chat bubble, then the chat panel
+     right         consumable hotbar, stacked, directly above the deck
+     bottom-left   dashboard card, with the steering pair beneath it
+     bottom-right  the driving deck
+
+   The deck is drawn two different ways across the three pages:
+
+     DEFAULT (page 1)               SIMPLIFIED / HIDE ALL (pages 2-3)
+       [MAP][TURBO ][ GAS  ]          [ GAS        ][ BRAKE      ]
+       [BAG][TURRET][      ]          [TURRET][TURBO][ HAND BRAKE ]
+            [ HAND ][BRAKE ]
+            [ BRAKE][      ]          ...with MAP / BAG as a pair on the
+                                        bottom row, beside the steering.
+
+   Rather than duplicating every rule per arrangement, section 0 publishes the
+   differences as custom properties and sections 6/6a apply them once. That
+   keeps one definition per control and makes the two arrangements readable
+   side by side.
+
+   ---------------------------------------------------------------------------
+   SIGNALS THIS FILE KEYS OFF (all written by existing modules)
+   ---------------------------------------------------------------------------
+     body[data-mc-orientation="portrait"]                MobileControls
+     body[data-mc-mode="arcade"|"manual"]                MobileControls
+     body[data-hud-mode="default"|"simplified"|"hidden"] HudVisibility
+     #mobile-controls[data-orientation="portrait"]       MobileControls
+   --------------------------------------------------------------------------- */
+
+/* =========================================================================
+   0. SCALE + ARRANGEMENT SWITCHES
+   -------------------------------------------------------------------------
+   Declared once on <body>. Everything below - including the rules that match
+   #mobile-controls - inherits from here, so there is exactly one place where
+   the portrait scale is defined.
+   ========================================================================= */
+
+body[data-mc-orientation="portrait"] {
+	/* One reference pixel. Capped so controls do not balloon on a portrait
+	   tablet, and floored as defence in depth.
+
+	   --mc-vw is now the LAYOUT viewport (see MobileControls.measureViewport),
+	   which is immune to page scale and to the on-screen keyboard - that is
+	   the actual fix for portrait shrinking after a rotation. The floor below
+	   is not that fix and is not a size increase: at 0.72px it only engages
+	   under a ~297px-wide viewport, narrower than any real phone, so a
+	   pathological measurement can degrade this composition but can never
+	   collapse it. */
+	--pf-u: clamp(
+		0.72px,
+		calc(var(--mc-vw, 100vw) / 412),
+		1.15px
+	);
+
+	/* Screen edges: the artwork's margins plus the device safe area, so no
+	   control can land under a notch, a home indicator or a rounded corner. */
+	--pf-ex: calc(var(--mc-safe-l, 0px) + 7 * var(--pf-u));
+	--pf-er: calc(var(--mc-safe-r, 0px) + 7 * var(--pf-u));
+	--pf-et: calc(var(--mc-safe-t, 0px) + 9 * var(--pf-u));
+	--pf-eb: calc(var(--mc-safe-b, 0px) + 13 * var(--pf-u));
+
+	/* ---- group sizes, straight off the artwork ---- */
+	--pf-tile-w: max(3.05rem, calc(52 * var(--pf-u)));
+	--pf-tile-h: max(2.3rem, calc(38 * var(--pf-u)));
+	--pf-tile-gap: calc(5 * var(--pf-u));
+
+	--pf-steer: max(3.1rem, calc(78 * var(--pf-u)));
+	--pf-steer-gap: calc(7 * var(--pf-u));
+
+	--pf-vitals-w: min(58vw, max(9.75rem, calc(152 * var(--pf-u))));
+	--pf-dash-w: max(9.5rem, calc(163 * var(--pf-u)));
+	--pf-chat-w: min(
+		calc(100vw - var(--pf-ex) - var(--pf-er)),
+		max(11rem, calc(202 * var(--pf-u)))
+	);
+
+	--pf-hotbar-slot: max(3.1rem, calc(58 * var(--pf-u)));
+
+	/* ---- deck, DEFAULT arrangement (page 1) ---- */
+	--pf-ped-w: max(3.4rem, calc(72 * var(--pf-u)));
+	--pf-gas-h: max(3.4rem, calc(84 * var(--pf-u)));
+	--pf-brake-h: max(3.2rem, calc(78 * var(--pf-u)));
+	--pf-act-w: max(3.4rem, calc(72 * var(--pf-u)));
+	--pf-act-h: max(2.2rem, calc(41 * var(--pf-u)));
+	--pf-col-gap: calc(10 * var(--pf-u));
+	--pf-row-gap: calc(5 * var(--pf-u));
+	--pf-util-w: max(2.1rem, calc(39 * var(--pf-u)));
+	--pf-util-h: max(2rem, calc(36 * var(--pf-u)));
+
+	/* ---- deck, SIMPLIFIED / HIDE ALL arrangement (pages 2-3) ---- */
+	--pf-s-half: max(2.05rem, calc(36 * var(--pf-u)));
+	--pf-s-wide: max(4rem, calc(74 * var(--pf-u)));
+	--pf-s-top-h: max(2.9rem, calc(59 * var(--pf-u)));
+	--pf-s-bot-h: max(2.5rem, calc(49 * var(--pf-u)));
+	--pf-s-gap: calc(2.5 * var(--pf-u));
+	--pf-s-util-w: max(2rem, calc(30 * var(--pf-u)));
+	--pf-s-util-h: max(1.8rem, calc(24 * var(--pf-u)));
+
+	/* ---------------------------------------------------------------
+	   ARRANGEMENT SWITCHES - default values describe page 1's deck.
+	   Section 0b overrides them for the compact deck.
+	   --------------------------------------------------------------- */
+	--pf-deck-display: flex;
+	--pf-subgroup-display: flex;
+	--pf-deck-gap: var(--pf-col-gap);
+	/* flex: sit the two columns on the deck floor. */
+	--pf-deck-align: flex-end;
+	--pf-act-font: max(0.42rem, calc(11 * var(--pf-u)));
+	--pf-hb-icon: flex;
+	--pf-hotbar-font: max(0.38rem, calc(8 * var(--pf-u)));
+
+	--pf-ped-w-used: var(--pf-ped-w);
+	--pf-ped-h-used: var(--pf-brake-h);
+	--pf-gas-h-used: var(--pf-gas-h);
+	--pf-act-w-used: var(--pf-act-w);
+	--pf-act-h-used: var(--pf-act-h);
+	--pf-hb-h-used: var(--pf-brake-h);
+
+	--pf-area-gas: auto;
+	--pf-area-brake: auto;
+	--pf-area-turret: auto;
+	--pf-area-turbo: auto;
+	--pf-area-hb: auto;
+
+	--pf-util-dir: column;
+	--pf-util-align: stretch;
+	--pf-util-gap: calc(4 * var(--pf-u));
+	--pf-util-left: auto;
+	--pf-util-right: calc(
+		var(--pf-er) + var(--pf-ped-w) + var(--pf-col-gap) + var(--pf-act-w) +
+			6 * var(--pf-u)
+	);
+	--pf-util-box: var(--pf-util-w);
+	--pf-util-w-used: var(--pf-util-w);
+	--pf-util-h-used: var(--pf-util-h);
+	--pf-util-icon: flex;
+
+	/* Height of the whole deck. The hotbar, the interact button and the
+	   shifter all hang off this single value, so they can never disagree with
+	   the deck they are meant to clear. */
+	--pf-deck-h: calc(var(--pf-gas-h) + var(--pf-row-gap) + var(--pf-brake-h));
+}
+
+/* ---- 0b. THE COMPACT DECK (reference pages 2 and 3) --------------------
+   Arcade only: manual adds a clutch pedal and an H-shifter, neither of which
+   the compact grid has a cell for, so manual keeps the page-1 arrangement in
+   every preset. */
+body[data-mc-orientation="portrait"][data-mc-mode="arcade"]:is(
+		[data-hud-mode="simplified"],
+		[data-hud-mode="hidden"]
+	) {
+	--pf-deck-display: grid;
+	--pf-subgroup-display: contents;
+	--pf-deck-gap: var(--pf-s-gap);
+	/* grid: every button fills the cell it was placed in. */
+	--pf-deck-align: stretch;
+	/* TURBO and TURRET drop into 36u cells here, so their labels come down
+	   with them - as drawn. */
+	--pf-act-font: max(0.38rem, calc(7.5 * var(--pf-u)));
+	/* A 49u tile cannot hold the glyph AND two lines of label. */
+	--pf-hb-icon: none;
+	--pf-hotbar-font: max(0.34rem, calc(7 * var(--pf-u)));
+
+	--pf-ped-w-used: auto;
+	--pf-ped-h-used: auto;
+	--pf-gas-h-used: auto;
+	--pf-act-w-used: auto;
+	--pf-act-h-used: auto;
+	--pf-hb-h-used: auto;
+
+	--pf-area-gas: 1 / 1 / 2 / 3;
+	--pf-area-brake: 1 / 3 / 2 / 4;
+	--pf-area-turret: 2 / 1 / 3 / 2;
+	--pf-area-turbo: 2 / 2 / 3 / 3;
+	--pf-area-hb: 2 / 3 / 3 / 4;
+
+	/* MAP / BAG move to the bottom row beside the steering. Anchoring them to
+	   the LEFT means the slack on a wider phone opens up between them and the
+	   deck - which is exactly where the reference leaves its empty space. */
+	--pf-util-dir: row;
+	--pf-util-align: flex-end;
+	--pf-util-gap: calc(3 * var(--pf-u));
+	--pf-util-left: calc(
+		var(--pf-ex) + var(--pf-steer) * 2 + var(--pf-steer-gap) +
+			4 * var(--pf-u)
+	);
+	--pf-util-right: auto;
+	--pf-util-box: auto;
+	--pf-util-w-used: var(--pf-s-util-w);
+	--pf-util-h-used: var(--pf-s-util-h);
+	--pf-util-icon: none;
+
+	--pf-deck-h: calc(var(--pf-s-top-h) + var(--pf-s-gap) + var(--pf-s-bot-h));
+	--pf-hotbar-slot: max(2.75rem, calc(45 * var(--pf-u)));
+}
+
+/* A narrow phone cannot seat steering + a horizontal MAP/BAG pair + the deck
+   on one row, so below 400px the pair stacks instead. Same anchor, same
+   spacing - only the axis changes. */
+@media (orientation: portrait) and (max-width: 399.98px) {
+	body[data-mc-orientation="portrait"][data-mc-mode="arcade"]:is(
+			[data-hud-mode="simplified"],
+			[data-hud-mode="hidden"]
+		) {
+		--pf-util-dir: column;
+		--pf-util-align: stretch;
+		--pf-util-box: var(--pf-s-util-w);
+	}
+}
+
+/* Manual keeps the page-1 COLUMN arrangement (there is nowhere in the
+   compact grid for a third pedal), but the pedals themselves shrink: three
+   stacked at the reference's page-1 heights (84/78/78u) leave no vertical
+   budget above them for the shifter, the hotbar and an open chat panel on a
+   real phone. Not in the reference at all, so free to size for what
+   actually fits rather than following an artwork measurement. */
+body[data-mc-orientation="portrait"][data-mc-mode="manual"] {
+	--pf-gas-h-used: max(2.9rem, calc(58 * var(--pf-u)));
+	--pf-ped-h-used: max(2.6rem, calc(50 * var(--pf-u)));
+	--pf-act-h-used: max(2rem, calc(36 * var(--pf-u)));
+	--pf-hb-h-used: max(2.6rem, calc(50 * var(--pf-u)));
+
+	--pf-deck-h: calc(
+		var(--pf-gas-h-used) + var(--pf-ped-h-used) * 2 + var(--pf-row-gap) * 2
+	);
+
+	/* The shifter's own footprint, so the clearance rules below can be exact
+	   instead of a guessed constant. Matches .mc-shifter-track's rendered
+	   size (see mobile.css) plus the gear-number labels either side of it. */
+	--pf-shifter-h: max(4.6rem, calc(80 * var(--pf-u)));
+}
+
+/* Shrunk to match the shorter deck above; mobile.css's 11rem x 7.15rem
+   landscape default is otherwise unchanged. */
+#mobile-controls[data-orientation="portrait"][data-mode="manual"]
+	.mc-shifter-track {
+	width: max(7.5rem, calc(150 * var(--pf-u)));
+	height: max(3.9rem, calc(68 * var(--pf-u)));
+}
+
+/* ---- 0c. NEUTRALISING INHERITED CHROME ---------------------------------
+   Two project-wide rules predate the touch layer and fight this composition:
+
+     style.css   button { margin-top: 1rem }
+       - adds 16px above every tile, hotbar slot and action button, so nothing
+         lands in the cell or row it was placed in.
+
+     style.css   .mc-steer-cluster { position: fixed; left/bottom: 1rem }
+       - pins the steering to its own hard-coded corner instead of letting
+         .mc-zone--left place it, which is what mobile.css documents.
+
+   Both are reset here for PORTRAIT ONLY, so landscape and desktop keep
+   whatever they were tuned against. */
+
+#mobile-controls[data-orientation="portrait"] button,
+body.mobile-controls-active[data-mc-orientation="portrait"] .hotbar-slot,
+body.mobile-controls-active[data-mc-orientation="portrait"] #chat-show {
+	margin: 0 !important;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-steer-cluster {
+	position: static;
+	left: auto;
+	right: auto;
+	top: auto;
+	bottom: auto;
+}
+
+/* =========================================================================
+   1. TOP-RIGHT: THE 2 x 2 TILE GRID
+   -------------------------------------------------------------------------
+   Three of the four tiles already live in .mc-hud-top-actions. MENU is the
+   pause button from the utility rail: rather than duplicate it, the grid
+   leaves its top-right cell empty and the existing button is pinned into
+   exactly that cell. Both are anchored to the same edge variables at the same
+   tile size, so the two can never drift apart.
+   ========================================================================= */
+
+#mobile-controls[data-orientation="portrait"] .mc-hud-top-actions {
+	position: absolute;
+	top: var(--pf-et);
+	right: var(--pf-er);
+	bottom: auto;
+	left: auto;
+	transform: none;
+
+	display: grid;
+	grid-template-columns: repeat(2, var(--pf-tile-w));
+	grid-template-rows: repeat(2, var(--pf-tile-h));
+	gap: var(--pf-tile-gap);
+}
+
+/* .mc-corner-actions is only a wrapper: let its two buttons take a cell each
+   instead of sharing one. */
+#mobile-controls[data-orientation="portrait"] .mc-corner-actions {
+	display: contents;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-corner-btn--camera {
+	grid-area: 1 / 1;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-corner-btn--fullscreen {
+	grid-area: 2 / 1;
+}
+
+#mobile-controls[data-orientation="portrait"] #hud-mode-toggle {
+	position: static !important;
+	grid-area: 2 / 2;
+	margin: 0 !important;
+	padding: 0 calc(2 * var(--pf-u)) !important;
+	width: var(--pf-tile-w);
+	height: var(--pf-tile-h);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	font-size: max(0.36rem, calc(7 * var(--pf-u)));
+	letter-spacing: 0;
+	line-height: 1.12;
+	white-space: normal;
+	overflow-wrap: break-word;
+	overflow: hidden;
+}
+
+/* Break between "HUD:" and the mode name, never inside the mode name. */
+#mobile-controls[data-orientation="portrait"] #hud-mode-toggle-label {
+	white-space: normal;
+	word-break: keep-all;
+	overflow-wrap: break-word;
+}
+
+/* MENU: the existing pause button, pinned into the free top-right cell. */
+#mobile-controls[data-orientation="portrait"] .mc-util-btn--pause {
+	position: fixed;
+	top: var(--pf-et);
+	right: var(--pf-er);
+	bottom: auto;
+	left: auto;
+	width: var(--pf-tile-w) !important;
+	height: var(--pf-tile-h) !important;
+	min-width: 0;
+	min-height: 0;
+}
+
+/* Tiles read as labelled buttons, as drawn. The icons are the project's
+   existing ones; only the caption and the box are portrait-specific. */
+#mobile-controls[data-orientation="portrait"] .mc-corner-btn {
+	width: var(--pf-tile-w) !important;
+	height: var(--pf-tile-h) !important;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: calc(1 * var(--pf-u));
+	padding: 0 0.1rem;
+	font: 600 max(0.38rem, calc(7.5 * var(--pf-u))) / 1.12 var(--dw-font);
+	letter-spacing: 0.01em;
+	text-align: center;
+	white-space: normal;
+	overflow: hidden;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-corner-btn--camera::after {
+	content: "CHANGE VIEW";
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-corner-btn--fullscreen::after {
+	/* Mixed case, as drawn: "FULLSCREEN" in caps does not fit the tile. */
+	content: "Fullscreen";
+	text-transform: none;
+}
+
+#mobile-controls[data-orientation="portrait"]
+	:is(.mc-corner-btn, .mc-util-btn--pause)
+	svg {
+	width: max(0.68rem, calc(13 * var(--pf-u)));
+	height: max(0.68rem, calc(13 * var(--pf-u)));
+}
+
+#mobile-controls[data-orientation="portrait"]
+	.mc-util-btn--pause
+	.mc-util-label {
+	font-size: max(0.4rem, calc(8 * var(--pf-u)));
+	letter-spacing: 0.08em;
+}
+
+/* =========================================================================
+   2. TOP-LEFT: HP / LV CARD
+   The card keeps its existing rows, bars and icon; only the box moves.
+   ========================================================================= */
+
+body[data-mc-orientation="portrait"] #combat-hud {
+	top: var(--pf-et) !important;
+	left: var(--pf-ex) !important;
+	right: auto !important;
+	bottom: auto !important;
+	width: var(--pf-vitals-w) !important;
+	max-width: var(--pf-vitals-w) !important;
+	padding: calc(7 * var(--pf-u)) calc(9 * var(--pf-u)) !important;
+	gap: calc(5 * var(--pf-u)) !important;
+	z-index: 6;
+}
+
+/* Pages 1 AND 2 both show the HP row and the LV row, so the generic
+   simplified rule that drops the XP row is reversed for portrait. */
+body[data-mc-orientation="portrait"][data-hud-mode="simplified"]
+	#combat-hud
+	.combat-row:has(#player-xp-fill) {
+	display: grid !important;
+}
+
+/* Page 3 still shows the vitals card, so it survives HIDE ALL in portrait. */
+body[data-mc-orientation="portrait"][data-hud-mode="hidden"] #combat-hud {
+	display: flex !important;
+}
+
+/* =========================================================================
+   3. CHAT - bubble under the tile grid, panel under the bubble
+   Existing chat design and behaviour; portrait placement only.
+   ========================================================================= */
+
+body[data-mc-orientation="portrait"] {
+	--pf-chat-top: calc(
+		var(--pf-et) + var(--pf-tile-h) * 2 + var(--pf-tile-gap) + 9 *
+			var(--pf-u)
+	);
+	--pf-bubble-h: max(2.15rem, calc(32 * var(--pf-u)));
+	--pf-panel-top: calc(
+		var(--pf-chat-top) + var(--pf-bubble-h) + 15 * var(--pf-u)
+	);
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] #chat-show {
+	position: fixed;
+	top: var(--pf-chat-top);
+	right: var(--pf-er);
+	left: auto;
+	bottom: auto;
+	z-index: 46;
+	min-width: max(2.75rem, calc(44 * var(--pf-u)));
+	height: var(--pf-bubble-h);
+	padding: 0 calc(9 * var(--pf-u));
+	border-radius: 999px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.25rem;
+	font-size: max(0.58rem, calc(12 * var(--pf-u)));
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] #chat-panel {
+	/* top: var(--pf-panel-top) !important; */
+	margin-top: 20px;
+	right: var(--pf-er) !important;
+	left: auto !important;
+	bottom: auto !important;
+	width: var(--pf-chat-w) !important;
+	z-index: 99;
+
+	/* Hard ceiling: whatever size the player has chosen for the panel, it can
+	   never grow down into the hotbar row or the deck. */
+	max-height: calc(
+		var(--mc-visual-vh, var(--mc-vh, 100vh)) - var(--pf-panel-top) -
+			var(--pf-eb) -
+			var(--pf-deck-h) - var(--pf-hotbar-slot) * 2 - 30 * var(--pf-u) -
+			var(--pf-shifter-h, 0px)
+	) !important;
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] #chat-log {
+	max-height: max(2.5rem, calc(62 * var(--pf-u)));
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] .op-panel {
+	/* top: var(--pf-panel-top) !important; */
+	left: var(--pf-er) !important;
+	right: auto !important;
+}
+
+body[data-mc-orientation="portrait"] #objective-strip {
+	top: calc(var(--pf-chat-top) + var(--pf-bubble-h) + 0.4rem) !important;
+}
+
+body[data-mc-orientation="portrait"] #game-notice {
+	top: calc(var(--pf-panel-top) + 0.6rem) !important;
+}
+
+/* =========================================================================
+   4. HOTBAR - vertical stack on the right, directly above the deck
+   ========================================================================= */
+
+body.mobile-controls-active[data-mc-orientation="portrait"] .hotbar {
+	top: auto;
+	left: auto;
+	right: var(--pf-er);
+	bottom: calc(var(--pf-eb) + var(--pf-deck-h) + 12 * var(--pf-u));
+	transform: none;
+	display: grid;
+	grid-template-columns: var(--pf-hotbar-slot);
+	gap: calc(8 * var(--pf-u));
+	z-index: 55;
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] .hotbar-slot {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: calc(1 * var(--pf-u));
+	width: var(--pf-hotbar-slot);
+	min-width: 0;
+	min-height: var(--pf-hotbar-slot);
+	padding: calc(4 * var(--pf-u)) calc(3 * var(--pf-u));
+	text-align: center;
+	overflow: hidden;
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] .hotbar-key {
+	display: none;
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] .hotbar-icon {
+	grid-row: auto;
+	font-size: max(0.8rem, calc(17 * var(--pf-u)));
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] .hotbar-name {
+	font-size: var(--pf-hotbar-font);
+	letter-spacing: 0.02em;
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"] .hotbar-qty {
+	font-size: max(0.46rem, calc(9 * var(--pf-u)));
+}
+
+body.mobile-controls-active[data-mc-orientation="portrait"]
+	:is(.hotbar-name, .hotbar-qty) {
+	width: 100%;
+	text-align: center;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* =========================================================================
+   5. DASHBOARD - bottom-left, sitting on top of the steering pair
+   -------------------------------------------------------------------------
+   The same dashboard, the same gauge and the same bar rows as everywhere else
+   in the game. The cluster is stacked into a column and given the card
+   proportions from the reference; nothing is redrawn.
+   ========================================================================= */
+
+body[data-mc-orientation="portrait"] #hud {
+	position: fixed;
+	top: auto !important;
+	bottom: calc(var(--pf-eb) + var(--pf-steer) + 4 * var(--pf-u)) !important;
+	left: var(--pf-ex) !important;
+	right: auto !important;
+	transform: none !important;
+	width: var(--pf-dash-w) !important;
+	max-width: var(--pf-dash-w) !important;
+	padding: 0 !important;
+	flex-direction: column !important;
+	align-items: stretch !important;
+	justify-content: flex-end !important;
+	gap: calc(4 * var(--pf-u)) !important;
+	z-index: 6;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash {
+	width: 100% !important;
+	max-width: none !important;
+	padding: calc(7 * var(--pf-u)) calc(8 * var(--pf-u)) !important;
+	gap: calc(4 * var(--pf-u)) !important;
+	align-items: stretch !important;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-cluster {
+	width: 100% !important;
+	min-width: 0 !important;
+	flex-direction: column !important;
+	align-items: stretch !important;
+	gap: calc(5 * var(--pf-u)) !important;
+}
+
+/* ---- the speed dial: the centrepiece of the DEFAULT preset ---- */
+
+body[data-mc-orientation="portrait"] #hud .dash-gauge--speed {
+	flex: 0 0 auto !important;
+	align-self: center !important;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-gauge-ring {
+	display: block !important;
+	width: max(4.5rem, calc(132 * var(--pf-u))) !important;
+	height: max(4.5rem, calc(132 * var(--pf-u))) !important;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-speed-value {
+	font-size: max(1.5rem, calc(44 * var(--pf-u))) !important;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-speed-unit {
+	font-size: max(0.44rem, calc(10 * var(--pf-u))) !important;
+	padding: calc(1 * var(--pf-u)) calc(6 * var(--pf-u)) !important;
+}
+
+/* Not drawn in the reference. */
+body[data-mc-orientation="portrait"] #hud
+	:is(
+		.dash-gauge-title,
+		.dash-warnings,
+		.dash-secondary,
+		.dash-engine-pill,
+		#start-engine
+	),
+body[data-mc-orientation="portrait"] #keyboard-panel {
+	display: none !important;
+}
+
+/* ---- the readout column -------------------------------------------------
+   The reference puts ARCADE, the RPM figure and the gear on one line. All
+   three already exist, but .dash-gear-badge wraps two of them, so the badge is
+   taken out of the flow with display:contents and the column becomes a grid
+   that can place all three in one row. No markup is duplicated or moved. */
+
+body[data-mc-orientation="portrait"] #hud .dash-info-col {
+	flex: 1 1 auto !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	padding-left: 0 !important;
+	border-left: 0 !important;
+	overflow: hidden !important;
+
+	display: grid !important;
+	grid-template-columns: auto 1fr auto;
+	grid-template-areas:
+		"mode rpm gear"
+		"boost boost boost"
+		"batt batt batt";
+	align-items: center;
+	gap: calc(4 * var(--pf-u)) calc(6 * var(--pf-u)) !important;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-gear-badge {
+	display: contents !important;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-gear-mode {
+	/* style.css drops the mode label on every touch layout; the reference
+	   shows it on both portrait cards, so it comes back here. */
+	display: block !important;
+	grid-area: mode;
+	font-size: max(0.5rem, calc(11 * var(--pf-u)));
+	letter-spacing: 0.08em;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-rpm-value {
+	display: block !important;
+	grid-area: rpm;
+	text-align: center;
+	font-size: max(0.46rem, calc(10 * var(--pf-u)));
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-gear-value {
+	grid-area: gear;
+	font-size: max(0.85rem, calc(18 * var(--pf-u))) !important;
+	line-height: 1 !important;
+	text-align: right;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-boost-row {
+	display: grid !important;
+	grid-area: boost;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-battery-row {
+	display: grid !important;
+	grid-area: batt;
+}
+
+body[data-mc-orientation="portrait"] #hud .dash-rpm-row {
+	grid-area: rpmrow;
+}
+
+/* Manual only: the clutch row spans the whole card rather than auto-placing
+   into a narrow implicit cell. */
+body[data-mc-orientation="portrait"] #hud .dash-clutch-row:not([hidden]) {
+	display: grid !important;
+	grid-column: 1 / -1;
+}
+
+body[data-mc-orientation="portrait"] #hud
+	:is(.dash-rpm-row, .dash-clutch-row, .dash-boost-row, .dash-battery-row) {
+	grid-template-columns: max(2.4rem, calc(45 * var(--pf-u))) 1fr auto !important;
+	gap: calc(6 * var(--pf-u)) !important;
+}
+
+body[data-mc-orientation="portrait"] #hud
+	:is(
+		.dash-rpm-label,
+		.dash-clutch-label,
+		.dash-boost-label,
+		.dash-battery-label
+	) {
+	font-size: max(0.38rem, calc(8 * var(--pf-u)));
+	letter-spacing: 0.1em;
+}
+
+body[data-mc-orientation="portrait"] #hud
+	:is(.dash-rpm-bar-value, .dash-battery-percent) {
+	font-size: max(0.4rem, calc(8 * var(--pf-u)));
+	min-width: 0;
+}
+
+/* =========================================================================
+   6. BOTTOM DECK
+   -------------------------------------------------------------------------
+   One set of rules for both arrangements; the switches set in section 0
+   decide which one this resolves to.
+   ========================================================================= */
+
+#mobile-controls[data-orientation="portrait"] .mc-zone--left {
+	left: var(--pf-ex);
+	bottom: var(--pf-eb);
+	right: auto;
+	top: auto;
+	flex-direction: row;
+	align-items: flex-end;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-steer-cluster {
+	gap: var(--pf-steer-gap);
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-steer-btn {
+	width: var(--pf-steer) !important;
+	height: var(--pf-steer) !important;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-zone--right {
+	right: var(--pf-er);
+	left: auto;
+	bottom: var(--pf-eb);
+	top: auto;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: calc(8 * var(--pf-u));
+	max-width: calc(100vw - var(--pf-ex) - var(--pf-er));
+}
+
+/* The deck container. Page 1 resolves this to a row of two columns; pages 2-3
+   resolve it to the 3-column grid the compact layout is drawn on. The
+   properties belonging to the other display type are simply ignored. */
+#mobile-controls[data-orientation="portrait"] .mc-hud-pedal_clusters {
+	display: var(--pf-deck-display);
+	/* The reference puts the action column INBOARD of the pedals, but
+	   .mc-pedals comes first in the markup, so the row is reversed rather
+	   than the DOM reordered. Ignored by the grid arrangement. */
+	flex-direction: row-reverse;
+	align-items: var(--pf-deck-align);
+	gap: var(--pf-deck-gap);
+
+	grid-template-columns: var(--pf-s-half) var(--pf-s-half) var(--pf-s-wide);
+	grid-template-rows: var(--pf-s-top-h) var(--pf-s-bot-h);
+}
+
+#mobile-controls[data-orientation="portrait"]
+	:is(.mc-pedals, .mc-action-cluster) {
+	display: var(--pf-subgroup-display);
+}
+
+/* Page 1: the pedal column, GAS above BRAKE (above CLUTCH, when manual). */
+#mobile-controls[data-orientation="portrait"] .mc-pedals {
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--pf-row-gap);
+}
+
+/* Page 1: TURBO, TURRET, then the taller HAND BRAKE beneath them. */
+#mobile-controls[data-orientation="portrait"] .mc-action-cluster {
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-end;
+	gap: calc(4 * var(--pf-u));
+	width: var(--pf-act-w-used);
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-pedal {
+	width: var(--pf-ped-w-used) !important;
+	height: var(--pf-ped-h-used) !important;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-pedal-accel {
+	order: 1;
+	grid-area: var(--pf-area-gas);
+	height: var(--pf-gas-h-used) !important;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-pedal-brake {
+	order: 2;
+	grid-area: var(--pf-area-brake);
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-pedal-clutch {
+	order: 3;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-action-cluster > button {
+	width: var(--pf-act-w-used) !important;
+	height: var(--pf-act-h-used) !important;
+	/* The generic 44px square floor would make this column taller than the
+	   deck it shares with the pedals; the drawn 41u height is honoured
+	   instead, and 72u of width keeps the target comfortable. */
+	min-width: 0;
+	min-height: 0;
+	font-size: var(--pf-act-font) !important;
+	letter-spacing: 0 !important;
+	line-height: 1.1;
+	/* No side padding: TURRET is the longest label and the 36u cell in the
+	   compact arrangement has nothing to spare. */
+	padding: 0;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-turbo-btn {
+	order: 1;
+	grid-area: var(--pf-area-turbo);
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-turret-btn {
+	order: 2;
+	grid-area: var(--pf-area-turret);
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-handbrake-btn {
+	order: 3;
+	grid-area: var(--pf-area-hb);
+	width: var(--pf-act-w-used) !important;
+	height: var(--pf-hb-h-used) !important;
+}
+
+/* The reference sets these controls in plain type, so the decorative turbo and
+   turret glyphs step aside and let the label fill the tile. */
+#mobile-controls[data-orientation="portrait"]
+	:is(.mc-turbo-icon, .mc-turret-icon) {
+	display: none;
+}
+
+/* Both labels carry their own font-size in style.css, so sizing the button
+   alone is not enough - at 36u the inherited size overflows the cell. */
+#mobile-controls[data-orientation="portrait"]
+	:is(.mc-turbo-text, .mc-turret-text) {
+	font-size: var(--pf-act-font) !important;
+	letter-spacing: 0 !important;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-pedal-label {
+	font-size: max(0.52rem, calc(13 * var(--pf-u)));
+	letter-spacing: 0.06em;
+}
+
+/* "HAND BRAKE" is drawn on two lines; the shared label rule forbids wrapping
+   because every other label is one short word. */
+#mobile-controls[data-orientation="portrait"]
+	.mc-handbrake-btn
+	.mc-pedal-label {
+	white-space: normal;
+	text-overflow: clip;
+}
+
+#mobile-controls[data-orientation="portrait"]
+	.mc-handbrake-btn
+	.mc-pedal-cap {
+	display: var(--pf-hb-icon);
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-pedal-icon svg {
+	width: max(0.85rem, calc(20 * var(--pf-u)));
+	height: max(0.85rem, calc(20 * var(--pf-u)));
+}
+
+/* ---- MAP / BAG -------------------------------------------------------
+   The utility rail is no longer a mid-height rail in portrait: MAP and BAG
+   join the deck, and MENU was pinned into the tile grid in section 1. */
+
+#mobile-controls[data-orientation="portrait"] .mc-util {
+	top: auto;
+	bottom: var(--pf-eb);
+	left: var(--pf-util-left);
+	right: var(--pf-util-right);
+	transform: none;
+	flex-direction: var(--pf-util-dir);
+	align-items: var(--pf-util-align);
+	justify-content: flex-end;
+	gap: var(--pf-util-gap);
+	width: var(--pf-util-box);
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-util-btn {
+	min-width: 0;
+	min-height: 0;
+}
+
+#mobile-controls[data-orientation="portrait"]
+	:is(.mc-util-btn--map, .mc-util-btn--bag) {
+	width: var(--pf-util-w-used) !important;
+	height: var(--pf-util-h-used) !important;
+}
+
+#mobile-controls[data-orientation="portrait"]
+	:is(.mc-util-btn--map, .mc-util-btn--bag)
+	.mc-util-icon {
+	display: var(--pf-util-icon);
+}
+
+#mobile-controls[data-orientation="portrait"]
+	:is(.mc-util-btn--map, .mc-util-btn--bag)
+	.mc-util-icon
+	svg {
+	width: max(0.6rem, calc(12 * var(--pf-u)));
+	height: max(0.6rem, calc(12 * var(--pf-u)));
+}
+
+#mobile-controls[data-orientation="portrait"]
+	:is(.mc-util-btn--map, .mc-util-btn--bag)
+	.mc-util-label {
+	font-size: max(0.36rem, calc(8 * var(--pf-u)));
+	letter-spacing: 0.06em;
+}
+
+/* =========================================================================
+   7. HUD PRESETS - what each reference page shows
+   ========================================================================= */
+
+/* ---- page 2: SIMPLIFIED - readout card only, no speed dial ---- */
+/* Manual keeps this same compact card in every preset - see the comment on
+   this selector's group in section 8. */
+
+body[data-mc-orientation="portrait"]:is(
+		[data-hud-mode="simplified"],
+		[data-mc-mode="manual"]
+	)
+	#hud
+	.dash-gauge--speed {
+	display: none !important;
+}
+
+/* The reference keeps the gear, RPM, boost and battery readouts on the
+   simplified card, so the generic desktop simplified rules that strip them
+   are reversed for portrait. */
+body[data-mc-orientation="portrait"]:is(
+		[data-hud-mode="simplified"],
+		[data-mc-mode="manual"]
+	)
+	#hud
+	:is(.dash-boost-row, .dash-battery-row, .dash-rpm-row) {
+	display: grid !important;
+}
+
+body[data-mc-orientation="portrait"]:is(
+		[data-hud-mode="simplified"],
+		[data-mc-mode="manual"]
+	)
+	#hud
+	.dash-info-col {
+	grid-template-areas:
+		"mode mode gear"
+		"rpmrow rpmrow rpmrow"
+		"boost boost boost"
+		"batt batt batt";
+}
+
+body[data-mc-orientation="portrait"]:is(
+		[data-hud-mode="simplified"],
+		[data-mc-mode="manual"]
+	)
+	#hud
+	.dash-gear-mode {
+	font-size: max(0.72rem, calc(16 * var(--pf-u)));
+}
+
+body[data-mc-orientation="portrait"]:is(
+		[data-hud-mode="simplified"],
+		[data-mc-mode="manual"]
+	)
+	#hud
+	.dash-gear-value {
+	font-size: max(0.9rem, calc(19 * var(--pf-u))) !important;
+}
+
+/* In this preset the RPM figure is carried by the RPM bar row instead. */
+body[data-mc-orientation="portrait"]:is(
+		[data-hud-mode="simplified"],
+		[data-mc-mode="manual"]
+	)
+	#hud
+	.dash-rpm-value {
+	display: none !important;
+}
+
+/* ---- page 3: HIDE ALL - vitals + driving controls only ---- */
+
+body[data-mc-orientation="portrait"][data-hud-mode="hidden"]
+	:is(
+		#hud,
+		.hotbar,
+		#chat-panel,
+		#chat-show,
+		.mc-util-btn--map,
+		.mc-util-btn--bag
+	) {
+	display: none !important;
+}
+
+/* The persistent minimap is not part of the portrait composition; the MAP
+   button opens the full map instead. */
+body.mobile-controls-active[data-mc-orientation="portrait"] #minimap-panel {
+	display: none !important;
+}
+
+/* =========================================================================
+   8. MANUAL TRANSMISSION - the shifter row, and what steps up to clear it
+   Not in the reference; kept working rather than left to collide.
+   ========================================================================= */
+
+#mobile-controls[data-orientation="portrait"] .mc-shifter {
+	left: 50%;
+	right: auto;
+	bottom: calc(var(--pf-eb) + var(--pf-deck-h) + 8 * var(--pf-u));
+	transform: translateX(-50%);
+	max-width: calc(100% - var(--pf-ex) - var(--pf-er));
+}
+
+/* The hotbar has to clear the shifter's actual rendered height, not a
+   guessed constant - otherwise the two overlap the moment the shifter's
+   real size stops matching whatever number was guessed here. */
+body.mobile-controls-active[data-mc-orientation="portrait"]:has(
+		.mc-shifter:not([hidden])
+	)
+	.hotbar {
+	bottom: calc(
+		var(--pf-eb) + var(--pf-deck-h) + 8 * var(--pf-u) +
+			var(--pf-shifter-h, 0px) + 8 * var(--pf-u)
+	);
+}
+
+/* Interact prompt: centred above the deck, clear of every group. */
+#mobile-controls[data-orientation="portrait"] .mc-interact-btn {
+	position: fixed;
+	left: 50%;
+	right: auto;
+	top: auto;
+	bottom: calc(var(--pf-eb) + var(--pf-deck-h) + 12 * var(--pf-u));
+	transform: translateX(-50%);
+	max-width: calc(
+		100vw - var(--pf-ex) - var(--pf-er) - var(--pf-hotbar-slot) * 2
+	);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	z-index: 62;
+}
+
+/* =========================================================================
+   9. ICON + LABEL ALIGNMENT  (both orientations)
+   ========================================================================= */
+
+#mobile-controls .mc-util-btn,
+#mobile-controls .mc-corner-btn,
+#mobile-controls .mc-pedal,
+#mobile-controls .mc-steer-btn {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	line-height: 1;
+	overflow: hidden;
+}
+
+#mobile-controls .mc-action-cluster > button,
+#mobile-controls .mc-handbrake-btn {
+	place-items: center;
+	text-align: center;
+	line-height: 1.05;
+	overflow: hidden;
+}
+
+#mobile-controls .mc-util-btn > span,
+#mobile-controls .mc-corner-btn > span,
+#mobile-controls .mc-action-cluster > button > span,
+#mobile-controls .mc-steer-btn > span,
+#mobile-controls .mc-pedal-cap,
+#mobile-controls .mc-pedal-icon,
+#mobile-controls .mc-interact-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	max-width: 100%;
+}
+
+#mobile-controls .mc-util-icon,
+#mobile-controls .mc-util-label,
+#mobile-controls .mc-pedal-label {
+	width: 100%;
+	text-align: center;
+}
+
+#mobile-controls .mc-util-label,
+#mobile-controls .mc-pedal-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#mobile-controls svg {
+	display: block;
+	margin: 0 auto;
+	flex: 0 0 auto;
+}
+
+/* =========================================================================
+   10. STACKING
+   ========================================================================= */
+
+body.mobile-controls-active #mobile-controls .mc-zone,
+body.mobile-controls-active #mobile-controls .mc-util,
+body.mobile-controls-active #mobile-controls .mc-hud-top-actions,
+body.mobile-controls-active #mobile-controls .mc-shifter {
+	z-index: 60;
+}

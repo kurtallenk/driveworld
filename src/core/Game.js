@@ -14,6 +14,8 @@ import { VehicleFeedback } from "../vehicle/VehicleFeedback.js";
 import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
 import { ControllerCalibrationWizard } from "../ui/ControllerCalibrationWizard.js";
 import { MobileControls } from "../ui/MobileControls.js";
+import { ItemHotbar } from "../ui/ItemHotbar.js";
+import { KeyboardPanelControls } from "../ui/KeyboardPanelControls.js";
 import { HudVisibility, HUD_MODE_LABELS } from "../ui/HudVisibility.js";
 import { DeliverySystem, DELIVERY_SYSTEM_ENABLED } from "../gameplay/DeliverySystem.js";
 import { Turret } from "../turret/Turret.js";
@@ -31,6 +33,12 @@ import { getEvolutionStage, getVehicleEvolutionConfig, getTurretEvolutionConfig 
 import { BatterySystem, BATTERY_CONFIG, applyBatteryToControls } from "../vehicle/BatterySystem.js";
 import { createChargingStation } from "../world/ChargingStation.js";
 import { FullscreenManager } from "../ui/FullscreenManager.js";
+import { createPOIs } from "../world/POISystem.js";
+import { Minimap } from "../ui/Minimap.js";
+import { LootSystem } from "../gameplay/LootSystem.js";
+import { InventorySystem } from "../gameplay/InventorySystem.js";
+import { InteractionSystem } from "../gameplay/InteractionSystem.js";
+import { getItem } from "../gameplay/ItemDatabase.js";
 
 // Tachometer scale for the dashboard's RPM arc. Redline comes straight
 // from the manual drivetrain's own config, so the gauge always agrees
@@ -93,6 +101,12 @@ this.audio.effectsVolume =
     this.physics.solver.iterations = 10;
 
     this.world = createWorld(this.scene, this.physics);
+
+    // Points of interest: props + collision for the roadside sites
+    // declared in WorldGeometry.POI_SITES. The access roads leading to
+    // them are part of the shared road route table, so the server's
+    // surface classification already knows about them.
+    this.pois = createPOIs(this.scene, this.physics, this.world.terrain);
 
     // Safe-zone charging station -- visual + a plain distance-based zone
     // check (same technique TargetSystem.js already uses for the enemy-
@@ -325,6 +339,13 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       if (target.kind === "boss") {
         this.showNotice(`BOSS DEFEATED! +${target.xpReward} XP`, 3);
       }
+
+      // Solo/host path: roll loot at the wreck. The enemy id is passed so
+      // the boss collectible is awarded exactly once per boss death, even
+      // if a death event were ever delivered twice.
+      this.loot?.dropFrom(target.position, target.kind, {
+        enemyId: target.id ?? null
+      });
     };
 
     // Multiplayer counterpart of onEnemyDestroyed above: enemy death itself
@@ -342,6 +363,40 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       if (message.kind === "boss") {
         this.showNotice(`BOSS DEFEATED! +${message.xpReward} XP`, 3);
       }
+
+      // Loot is NOT rolled here any more. The server rolls it from the
+      // authoritative enemy record at the enemy's real death position and
+      // broadcasts it to every client (see server/LootWorld.js), so this
+      // path used to be the source of the "item spawned on top of me" bug:
+      // it fell back to the local player's own physics body position.
+      // LootSystem.dropFrom() is a no-op while a loot-aware server owns the
+      // world, so the call below only ever fires against a server build
+      // with no LootWorld -- and even then it uses the ENEMY's position,
+      // looked up by the server's own enemy id, never the player's.
+      const deathPosition = this.enemyDeathPosition(message.enemyId);
+
+      if (deathPosition) {
+        this.loot?.dropFrom(deathPosition, message.kind, {
+          enemyId: message.enemyId ?? null
+        });
+      }
+    };
+
+    // Resolves a server enemy id to the world position that enemy is
+    // currently rendered at on this client. Returns null rather than
+    // guessing, so loot can never fall back to the player's position.
+    this.enemyDeathPosition = enemyId => {
+      const target = this.targetSystem?.targets?.find(
+        candidate => candidate?.id === enemyId
+      );
+
+      const position = target?.position ?? target?.root?.position ?? null;
+
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) {
+        return null;
+      }
+
+      return { x: position.x, z: position.z };
     };
 
     this.targetSystem.onBossSpawned = target => {
@@ -590,6 +645,11 @@ if (controllerButton) {
     this.gearModeElement = document.querySelector("#gear-mode");
     this.rpmValueElement = document.querySelector("#dash-rpm-value");
     this.rpmFillElement = document.querySelector("#dash-rpm-fill");
+
+    // Bar form of the same reading, used by the portrait SIMPLIFIED preset
+    // (which drops the dial). Fed from the same presentationRPM below.
+    this.rpmBarFillElement = document.querySelector("#dash-rpm-bar-fill");
+    this.rpmBarValueElement = document.querySelector("#dash-rpm-bar-value");
     this.clutchRowElement = document.querySelector("#dash-clutch-row");
     this.clutchFillElement = document.querySelector("#dash-clutch-fill");
     this.boostFillElement = document.querySelector("#dash-boost-fill");
@@ -627,14 +687,134 @@ if (controllerButton) {
     this.lastHudTime = -Infinity;
 
     this.resize = () => {
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
-      this.camera.aspect = window.innerWidth / window.innerHeight;
+      // Keep the render surface on the CSS layout viewport, matching the
+      // viewport used by MobileControls. visualViewport can be page-scaled
+      // or temporarily reduced by the on-screen keyboard after a rotation;
+      // using it here would put the canvas and DOM HUD on different scales.
+      const layoutWidth =
+        document.documentElement?.clientWidth || window.innerWidth;
+      const layoutHeight =
+        document.documentElement?.clientHeight || window.innerHeight;
+
+      if (!layoutWidth || !layoutHeight) return;
+
+      this.renderer.setSize(layoutWidth, layoutHeight);
+      this.camera.aspect = layoutWidth / layoutHeight;
       this.camera.updateProjectionMatrix();
     };
     window.addEventListener("resize", this.resize);
     this.resize();
 
     this.frame = this.frame.bind(this);
+    // -----------------------------------------------------------------
+    // MINIMAP
+    //
+    // Reads from existing systems through getters rather than owning
+    // any state, and is redrawn from the throttled HUD tick below.
+    // -----------------------------------------------------------------
+    // -----------------------------------------------------------------
+    // LOOT / INVENTORY / INTERACTION
+    //
+    // Client-side by design (see LootSystem's header): drops are only
+    // rolled where XP is already awarded privately to the killer, so
+    // no new multiplayer state or traffic is introduced.
+    // -----------------------------------------------------------------
+    this.loot = new LootSystem(this.scene, this.world.terrain);
+
+    this.inventory = new InventorySystem(
+      document.querySelector("#inventory-panel"),
+      {
+        onNotice: (text, duration) => this.showNotice(text, duration),
+        onUsed: () => this.playItemUseTone()
+      }
+    );
+
+    // The inventory resolves item effects against these existing
+    // systems -- notably the one BatterySystem instance, so the
+    // Portable Battery is a charge source for the existing battery
+    // rather than a parallel mechanic.
+    this.inventory.context = {
+      battery: this.battery,
+      playerHealth: this.playerHealth,
+      levelSystem: this.levelSystem
+    };
+
+    // Compact consumable bar (medkit / portable battery). It is a view
+    // over the SAME InventorySystem instance above -- it holds no counts
+    // of its own, so the bag and the hotbar can never disagree.
+    this.itemHotbar = new ItemHotbar(this.inventory, {
+      onNotice: (text, duration) => this.showNotice(text, duration)
+    });
+
+    this.interactions = new InteractionSystem(
+      document.querySelector("#interaction-prompt")
+    );
+
+    // Loot pickups are the first interactable provider; the system is
+    // generic so charging stations or POI objects can register later.
+    this.interactions.register(position => {
+      const drop = this.loot.nearest(position);
+
+      // Re-validated every probe: a drop that has been collected (locally
+      // or by another player) or removed by the server can never be
+      // offered, so the prompt cannot go stale.
+      if (!drop || !this.loot.isAvailable(drop)) return null;
+
+      // A pickup this client has already asked the server for is not
+      // offered again while the request is in flight.
+      if (drop.pickupId && this.pendingPickups.has(drop.pickupId)) return null;
+
+      return {
+        label: drop.name,
+        verb: "PICK UP",
+        distance: Math.hypot(
+          drop.position.x - position.x,
+          drop.position.z - position.z
+        ),
+        activate: () => this.collectDrop(drop)
+      };
+    });
+
+    // pickupIds this client has requested and not yet heard back about.
+    this.pendingPickups = new Set();
+
+    // Drop feedback reuses the existing notice + tone-effect systems.
+    this.loot.onDrop = item => {
+      // Driven by the item's `collectible` flag, not by its name.
+      if (item.collectible) {
+        this.showNotice(`RARE COLLECTIBLE  ${item.name}`, 3.5);
+        return;
+      }
+
+      this.showNotice(`SALVAGE DROPPED  ${item.name}`, 2);
+    };
+
+    this.minimap = new Minimap(document.querySelector("#minimap-panel"));
+    this.minimap.chargingStation = this.chargingStation;
+    this.minimap.setVisible(true);
+    this.minimap.getEnemies = () => this.targetSystem.getActiveTargets();
+    this.minimap.getWorldItems = () => this.loot?.getWorldItems?.() ?? [];
+
+    // POI discovery is client-side and cosmetic, so it needs no network
+    // sync -- it reuses the existing notice system for feedback.
+    this.pois.onDiscovered = site => {
+      this.showNotice(`DISCOVERED  ${site.name}`, 3);
+      if (this.audio?.effectsBus) {
+        this.audio.playToneEffect({
+          startFrequency: 420,
+          endFrequency: 640,
+          duration: 0.22,
+          volume: 0.05,
+          type: "triangle",
+          destination: this.audio.effectsBus
+        });
+      }
+    };
+
+    // Hostile POIs become the anchors the enemy spawner clusters
+    // around, instead of scattering enemies over open grass.
+    this.targetSystem.setPOIAnchors(this.pois.getEnemyAnchors());
+
     this.menu = new SettingsMenu();
 
     // HUD visibility (DEFAULT / SIMPLIFIED / HIDE ALL). Everything this
@@ -683,14 +863,35 @@ if (controllerButton) {
   this.menu
 );
 
+    // Minimise/restore control for the existing keycap reference panel,
+    // which now stacks above the dashboard in the left HUD column.
+    this.keyboardPanelControls = new KeyboardPanelControls(
+      document.querySelector("#keyboard-panel")
+    );
+
     this.mobileControls = new MobileControls(this.input);
+
+    // One interaction target drives both affordances: the desktop
+    // `E PICK UP` prompt and the mobile TAP TO PICK UP button.
+    this.interactions.mobileControls = this.mobileControls;
 
     // The mobile landscape corner cluster (fullscreen + camera) calls
     // back into the same systems the desktop settings menu uses — it
     // never owns fullscreen or camera state itself.
     this.mobileControls.setActions({
       onFullscreen: () => this.fullscreen.toggle(),
-      onCamera: () => this.cameraRig.toggle()
+      onCamera: () => this.cameraRig.toggle(),
+
+      // Pause reuses the existing settings menu rather than adding a
+      // second pause surface; frame() already halts while it is open.
+      onPause: () => this.menu.open(),
+
+      // Map and inventory are owned by later systems (minimap /
+      // inventory). They route through these hooks so the touch
+      // buttons never hold gameplay state of their own.
+      onMap: () => this.toggleMap(),
+      onInventory: () => this.toggleInventory(),
+      onInteract: () => this.triggerInteraction()
     });
     this.mobileControls.setFullscreenActive(this.fullscreen.isActive);
 
@@ -699,8 +900,173 @@ if (controllerButton) {
     if (this.mobileControls.isTouchDevice) {
       this.input.enableMobile();
       this.mobileControls.setActive(true);
+      this.interactions?.setTouchMode(true);
       this.mobileControls.setDrivingMode(this.drivingMode);
     }
+  }
+
+  // ---------------------------------------------------------------
+  // SHARED INTERACTION HOOKS
+  //
+  // Single entry points used by BOTH the keyboard bindings and the
+  // mobile utility buttons, so touch and desktop can never drift
+  // apart. The map/inventory/interaction systems attach themselves
+  // here; until then these are safe no-ops.
+  // ---------------------------------------------------------------
+
+  // Single place a world drop turns into inventory contents, so the
+  // desktop E key and the mobile interact button behave identically.
+  // Short confirmation blip for using an inventory item.
+  playItemUseTone() {
+    if (!this.audio?.effectsBus) return;
+
+    this.audio.playToneEffect({
+      startFrequency: 300,
+      endFrequency: 520,
+      duration: 0.18,
+      volume: 0.05,
+      type: "sine",
+      destination: this.audio.effectsBus
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // SERVER-AUTHORITATIVE PICKUP RESULTS
+  // ---------------------------------------------------------------
+
+  // The server awarded this pickup to us. This is the ONLY place a
+  // networked pickup ever reaches the inventory.
+  handlePickupGranted(pickupId, itemId) {
+    this.pendingPickups.delete(pickupId);
+
+    const added = this.inventory.add(itemId, 1);
+
+    if (added <= 0) {
+      this.showNotice("CARGO FULL", 1.5);
+      return false;
+    }
+
+    const item = getItem(itemId);
+    this.showNotice(`${item?.name ?? "SALVAGE"} +${added}`, 1.8);
+    this.playPickupTone(itemId);
+
+    return true;
+  }
+
+  // Broadcast to EVERY client, including the one that collected it, so all
+  // players converge on the same world state.
+  handlePickupRemoved(pickupId) {
+    this.pendingPickups.delete(pickupId);
+
+    const removed = this.loot?.removeByPickupId?.(pickupId);
+
+    // If the prompt was pointing at the item that just vanished, drop it
+    // immediately rather than waiting for the next throttled probe.
+    if (removed) this.interactions?.clear();
+  }
+
+  // Somebody else won the race, we moved out of range, or the item was
+  // already gone. The item stays in the world for whoever it belongs to;
+  // we just stop claiming it.
+  handlePickupDenied(pickupId, reason) {
+    this.pendingPickups.delete(pickupId);
+
+    this.interactions?.clear();
+
+    if (reason === "taken") this.showNotice("SALVAGE ALREADY TAKEN", 1.5);
+    else if (reason === "too-far") this.showNotice("TOO FAR FROM SALVAGE", 1.5);
+  }
+
+  // `itemId` is optional: when it names a rare collectible the pickup gets
+  // a longer, brighter flourish instead of the ordinary salvage blip. The
+  // distinction comes from the item's `collectible` flag, never its name,
+  // and it reuses the existing tone-effect system rather than adding an
+  // audio asset.
+  playPickupTone(itemId = null) {
+    // effectsBus only exists after AudioManager.initialize(), and
+    // playToneEffect() connects straight to `destination` with no
+    // fallback, so a pickup before audio init must not call it.
+    if (!this.audio?.effectsBus) return;
+
+    if (itemId && getItem(itemId)?.collectible) {
+      this.audio.playToneEffect({
+        startFrequency: 520,
+        endFrequency: 1560,
+        duration: 0.55,
+        volume: 0.07,
+        type: "triangle",
+        destination: this.audio.effectsBus
+      });
+
+      return;
+    }
+
+    this.audio.playToneEffect({
+      startFrequency: 660,
+      endFrequency: 990,
+      duration: 0.14,
+      volume: 0.055,
+      type: "triangle",
+      destination: this.audio.effectsBus
+    });
+  }
+
+  collectDrop(drop) {
+    if (!drop || !this.loot?.isAvailable(drop)) return false;
+
+    // NETWORKED: ask, don't take. The world item is only removed, and the
+    // inventory only credited, once the server has validated the request
+    // and broadcast the result (see handlePickupGranted / Removed).
+    if (this.loot.networked && drop.pickupId) {
+      if (this.pendingPickups.has(drop.pickupId)) return false;
+
+      const sent = this.multiplayer?.sendPickupRequest?.(drop.pickupId);
+
+      if (sent) {
+        this.pendingPickups.add(drop.pickupId);
+        this.interactions?.clear();
+        return true;
+      }
+
+      return false;
+    }
+
+    // OFFLINE: unchanged local path.
+    const added = this.inventory.add(drop.itemId, 1);
+
+    if (added <= 0) {
+      this.showNotice("CARGO FULL", 1.5);
+      return false;
+    }
+
+    this.loot.remove(drop);
+    this.showNotice(`${drop.name} +${added}`, 1.8);
+
+    // The collected item must stop being an interaction candidate the
+    // instant it is consumed.
+    this.interactions?.clear();
+
+    this.playPickupTone(drop.itemId);
+
+    return true;
+  }
+
+  toggleMap() {
+    if (this.minimap?.toggleExpanded) {
+      const open = this.minimap.toggleExpanded();
+      this.mobileControls?.setMapOpen(open);
+    }
+  }
+
+  toggleInventory() {
+    if (this.inventory?.toggle) {
+      const open = this.inventory.toggle();
+      this.mobileControls?.setInventoryOpen(open);
+    }
+  }
+
+  triggerInteraction() {
+    this.interactions?.activate?.();
   }
 
   setDrivingMode(mode) {
@@ -723,6 +1089,14 @@ if (controllerButton) {
   this.engineStartRequested = false;
 
   if (this.dashElement) this.dashElement.dataset.mode = mode;
+
+  // The control-reference panel carries both an arcade and a manual group
+  // (see index.html); this attribute is what swaps between them.
+  if (this.keyboardPanelElement) {
+    this.keyboardPanelElement.dataset.mode = mode;
+    const modeLabel = this.keyboardPanelElement.querySelector("#kbd-panel-mode");
+    if (modeLabel) modeLabel.textContent = mode === "manual" ? "MANUAL" : "ARCADE";
+  }
 
   this.drivingStatusElement.textContent = mode === "manual"
     ? "Manual selected. Activate wheel, select neutral, then start engine."
@@ -1225,7 +1599,46 @@ this.audio.playFeedback(feedback.events);
 
 this.renderer.render(this.scene, this.camera);
 
+    // Loot bob/spin runs per frame (it is visual), but the pickup
+    // proximity scan below rides the 100ms HUD throttle.
+    this.loot?.update(dt);
+
+    // UI key edges are consumed every frame (not on the HUD throttle)
+    // so a quick tap is never dropped.
+    if (this.input.consumeMapToggle()) this.toggleMap();
+    if (this.input.consumeInventoryToggle()) this.toggleInventory();
+
+    // Digit 1/2 use the hotbar slots, routed through the same
+    // InventorySystem.useItem() path as the Cargo panel's USE buttons.
+    const hotbarKey = this.input.consumeHotbarSlot();
+    if (hotbarKey) this.itemHotbar?.handleKey(hotbarKey);
+    if (this.input.consumeInteract()) this.triggerInteraction();
+
     if (timeMs - this.lastHudTime >= 100) {
+      // Minimap + POI discovery ride the existing 100ms HUD throttle
+      // rather than the animation frame: both are cheap, but neither
+      // needs 60Hz and the minimap redraw touches a canvas.
+      const carPosition = this.vehiclePhysics.body.position;
+
+      this.pois?.update(carPosition);
+      this.interactions?.update(carPosition);
+
+      if (this.minimap) {
+        // The chassis' forward axis is local +Z (VehiclePhysics sets
+        // indexForwardAxis: 2), which is exactly what getWorldDirection
+        // returns, so this is the true heading of the car.
+        //
+        // The minimap wants a COMPASS angle: 0 = facing -Z (drawn up the
+        // map), increasing clockwise. On the map canvas +X is right and
+        // +Z is down, so that angle is atan2(x, -z).
+        const forward = this.vehicle.root.getWorldDirection(
+          this._minimapDir ??= new THREE.Vector3()
+        );
+
+        const heading = Math.atan2(forward.x, -forward.z);
+
+        this.minimap.draw(carPosition, heading);
+      }
       const speedKmh = this.vehiclePhysics.body.velocity.length() * 3.6;
       const displaySpeed = this.speedUnit === "mph"
         ? speedKmh * 0.621371
@@ -1252,11 +1665,12 @@ this.renderer.render(this.scene, this.camera);
       // Tachometer arc + digital RPM readout share the same
       // presentationRPM already computed above for audio/vehicle
       // feedback this frame — just mapped onto the gauge's sweep.
-      if (this.rpmFillElement && this.rpmArcLength) {
-        const frac = Math.max(0, Math.min(1, presentationRPM / DASH_RPM_MAX));
+      const rpmFraction =
+        Math.max(0, Math.min(1, presentationRPM / DASH_RPM_MAX));
 
+      if (this.rpmFillElement && this.rpmArcLength) {
         this.rpmFillElement.style.strokeDashoffset =
-          String(this.rpmArcLength * (1 - frac));
+          String(this.rpmArcLength * (1 - rpmFraction));
 
         this.rpmFillElement.classList.toggle(
           "dash-rpm-redline",
@@ -1264,8 +1678,24 @@ this.renderer.render(this.scene, this.camera);
         );
       }
 
+      // Same reading, bar form. Only the portrait SIMPLIFIED preset renders
+      // it, but it costs nothing to keep in step with the dial.
+      if (this.rpmBarFillElement) {
+        this.rpmBarFillElement.style.width = `${rpmFraction * 100}%`;
+
+        this.rpmBarFillElement.classList.toggle(
+          "dash-rpm-redline",
+          presentationRPM >= DASH_RPM_REDLINE
+        );
+      }
+
       if (this.rpmValueElement) {
         this.rpmValueElement.textContent = `${Math.round(presentationRPM)} RPM`;
+      }
+
+      if (this.rpmBarValueElement) {
+        this.rpmBarValueElement.textContent =
+          `${Math.round(presentationRPM)} RPM`;
       }
 
       if (this.drivingMode === "manual") {

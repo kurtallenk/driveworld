@@ -1,0 +1,270 @@
+/* =========================================================================
+   DRIVEWORLD — LOOT, INVENTORY & INTERACTION
+   -------------------------------------------------------------------------
+   Built on the Phase 1 design tokens (ui/theme.css). Same chamfered,
+   low-chrome, instrument-panel language as the dash: thin lines, flat
+   surfaces, monospaced numerals, no floating rounded cards.
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   INTERACTION PROMPT
+   Sits just below centre so it reads as a world callout without covering
+   the road ahead or the speed binnacle.
+   ------------------------------------------------------------------------- */
+
+#interaction-prompt {
+	position: fixed;
+	left: 50%;
+	bottom: calc(var(--dw-sa-b, 0px) + 30vh);
+	transform: translateX(-50%);
+	z-index: 20;
+	display: flex;
+	align-items: center;
+	gap: 0.55rem;
+	padding: 0.4rem 0.75rem;
+	background: rgba(10, 13, 16, 0.86);
+	border: 1px solid var(--dw-line-strong);
+	border-radius: var(--dw-r);
+	pointer-events: none;
+	animation: interact-in 140ms ease-out;
+}
+
+#interaction-prompt[hidden] {
+	display: none;
+}
+
+@keyframes interact-in {
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(0.35rem);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+}
+
+#interaction-key {
+	display: grid;
+	place-items: center;
+	min-width: 1.5rem;
+	height: 1.5rem;
+	padding: 0 0.3rem;
+	font: 700 0.75rem/1 var(--dw-font-num);
+	color: var(--dw-bg-900);
+	background: var(--dw-accent);
+	border-radius: 2px;
+}
+
+#interaction-label {
+	font: 600 0.75rem/1 var(--dw-font);
+	letter-spacing: 0.1em;
+	color: var(--dw-text);
+}
+
+/* -------------------------------------------------------------------------
+   INVENTORY
+   A compact side panel, not a full-screen RPG bag. Opens with I or the
+   mobile BAG button and never blocks the centre of the road.
+   ------------------------------------------------------------------------- */
+
+#inventory-panel {
+	position: fixed;
+	top: 50%;
+	right: calc(var(--dw-sa-r, 0px) + var(--dw-edge, 1rem));
+	transform: translateY(-50%);
+	z-index: 24;
+	width: min(22rem, 86vw);
+	background: rgba(9, 12, 15, 0.94);
+	border: 1px solid var(--dw-line-strong);
+	border-radius: var(--dw-r);
+	clip-path: polygon(
+		0 0.8rem,
+		0.8rem 0,
+		100% 0,
+		100% 100%,
+		0.8rem 100%,
+		0 calc(100% - 0.8rem)
+	);
+	box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.5);
+}
+
+#inventory-panel[hidden] {
+	display: none;
+}
+
+.inv-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.55rem 0.7rem;
+	border-bottom: 1px solid var(--dw-line);
+}
+
+.inv-title {
+	font: 700 0.7rem/1 var(--dw-font);
+	letter-spacing: 0.18em;
+	color: var(--dw-text-dim);
+}
+
+#inventory-close {
+	width: 1.6rem;
+	height: 1.6rem;
+	color: var(--dw-text-mute);
+	background: transparent;
+	border: 1px solid var(--dw-line);
+	border-radius: 2px;
+	font: 600 0.8rem/1 var(--dw-font);
+	cursor: pointer;
+}
+
+#inventory-close:hover {
+	color: var(--dw-text);
+	border-color: var(--dw-line-strong);
+}
+
+#inventory-list {
+	margin: 0;
+	padding: 0.35rem;
+	list-style: none;
+	max-height: 50vh;
+	overflow-y: auto;
+}
+
+.inv-row {
+	display: grid;
+	grid-template-columns: 1.7rem 1fr auto auto;
+	align-items: center;
+	gap: 0.55rem;
+	padding: 0.45rem 0.4rem;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.inv-row:last-child {
+	border-bottom: 0;
+}
+
+/* Rarity reads as a thin edge marker rather than a coloured card. */
+.inv-row[data-rarity="uncommon"] {
+	box-shadow: inset 2px 0 0 var(--dw-rar-uncommon, #4be3a0);
+}
+
+.inv-row[data-rarity="rare"] {
+	box-shadow: inset 2px 0 0 var(--dw-rar-rare, #48d5ff);
+}
+
+.inv-row[data-rarity="epic"] {
+	box-shadow: inset 2px 0 0 var(--dw-rar-epic, #c07aff);
+}
+
+.inv-icon {
+	font-size: 1.1rem;
+	text-align: center;
+}
+
+.inv-text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	min-width: 0;
+}
+
+.inv-name {
+	font: 700 0.7rem/1 var(--dw-font);
+	letter-spacing: 0.08em;
+	color: var(--dw-text);
+}
+
+.inv-desc {
+	font: 400 0.65rem/1.3 var(--dw-font);
+	color: var(--dw-text-mute);
+}
+
+.inv-qty {
+	font: 700 0.8rem/1 var(--dw-font-num);
+	color: var(--dw-text-dim);
+}
+
+.inv-use {
+	padding: 0.35rem 0.6rem;
+	min-height: 2rem;
+	font: 700 0.65rem/1 var(--dw-font);
+	letter-spacing: 0.12em;
+	color: var(--dw-bg-900);
+	background: var(--dw-accent);
+	border: 0;
+	border-radius: 2px;
+	cursor: pointer;
+}
+
+.inv-use:active {
+	background: var(--dw-accent-dim);
+}
+
+/* Rare collectibles are trophies, not consumables: the row shows a static
+   KEPT tag in the epic rarity colour instead of an inert USE button.
+   See InventorySystem.render() and the `collectible` item flag. */
+.inv-kept {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--dw-bg-900);
+	background: var(--dw-rar-epic, #c07aff);
+	cursor: default;
+}
+
+#inventory-empty {
+	padding: 1.1rem 0.9rem;
+	text-align: center;
+	font: 500 0.68rem/1.4 var(--dw-font);
+	color: var(--dw-text-mute);
+}
+
+#inventory-empty[hidden] {
+	display: none;
+}
+
+/* -------------------------------------------------------------------------
+   MOBILE
+   Portrait uses a bottom drawer (thumb reach, easy dismiss); landscape
+   keeps the side panel but shrinks it so the road stays visible. Both
+   respect safe areas.
+   ------------------------------------------------------------------------- */
+
+body[data-mc-orientation="portrait"] #inventory-panel {
+	top: auto;
+	right: calc(var(--dw-sa-r, 0px) + 0.5rem);
+	left: calc(var(--dw-sa-l, 0px) + 0.5rem);
+	bottom: calc(var(--dw-sa-b, 0px) + 0.5rem);
+	width: auto;
+	transform: none;
+}
+
+body[data-mc-orientation="portrait"] #inventory-list {
+	max-height: 38vh;
+}
+
+body[data-mc-orientation="landscape"] #inventory-panel {
+	width: min(20rem, 52vw);
+}
+
+body[data-mc-orientation="landscape"] #inventory-list {
+	max-height: 42vh;
+}
+
+/* Touch targets stay comfortably above the 44px guidance on mobile. */
+body.mobile-controls-active .inv-use,
+body.mobile-controls-active #inventory-close {
+	min-height: 2.75rem;
+	min-width: 2.75rem;
+}
+
+/* The desktop key prompt is meaningless on touch; MobileControls shows its
+   own TAP TO PICK UP button instead. */
+body.mobile-controls-active #interaction-prompt {
+	display: none;
+}
+
+body[data-hud-mode="hidden"] #interaction-prompt {
+	display: none;
+}

@@ -1,0 +1,347 @@
+/* =========================================================================
+   DRIVEWORLD — MOBILE LAYOUT (authoritative)
+   -------------------------------------------------------------------------
+   Loaded LAST (see main.js) so it wins over the older per-breakpoint mobile
+   patches that accumulated in style.css.
+
+   This file owns WHERE every touch control and HUD panel sits in each of
+   the two orientations. mobile.css still owns how the controls LOOK.
+
+   Both layouts are driven by attributes written by
+   MobileControls.applyLayout() from the live viewport:
+
+     #mobile-controls[data-orientation="landscape"|"portrait"]
+     #mobile-controls[data-size="xs"|"sm"|"md"|"lg"]
+     #mobile-controls[data-compact="true"|"false"]
+     body[data-mc-orientation], body[data-mc-size]
+
+   ...so a rotation genuinely re-runs the layout instead of rescaling the
+   previous one. Nothing here uses an orientation media query.
+   ========================================================================= */
+
+:root {
+	/* Live viewport, published by MobileControls.applyLayout(). Falls back
+	   to the dynamic viewport units before the first layout pass. */
+	--mc-vw: 100vw;
+	--mc-vh: 100vh;
+
+	/* Safe-area edges. Every anchor below is expressed against these, so no
+	   control can ever land under a notch, a home indicator, rounded
+	   corners or the browser chrome. */
+	--mc-safe-t: env(safe-area-inset-top, 0px);
+	--mc-safe-r: env(safe-area-inset-right, 0px);
+	--mc-safe-b: env(safe-area-inset-bottom, 0px);
+	--mc-safe-l: env(safe-area-inset-left, 0px);
+
+	--mc-pad: 0.75rem;
+
+	--mc-edge-t: calc(var(--mc-safe-t) + var(--mc-pad));
+	--mc-edge-r: calc(var(--mc-safe-r) + var(--mc-pad));
+	--mc-edge-b: calc(var(--mc-safe-b) + var(--mc-pad));
+	--mc-edge-x: calc(var(--mc-safe-l) + var(--mc-pad));
+
+	/* Minimum comfortable finger target. Never overridden downward. */
+	--mc-hit-min: 2.75rem;
+}
+
+@supports (height: 100dvh) {
+	:root {
+		--mc-vh: 100dvh;
+	}
+}
+
+/* -------------------------------------------------------------------------
+   CONTROL SCALE
+   One variable set per size bucket. Orientation then decides placement.
+   ------------------------------------------------------------------------- */
+
+#mobile-controls[data-size="lg"] {
+	--mc-steer: 5.5rem;
+	--mc-pedal-w: 5rem;
+	--mc-pedal-h: 6.25rem;
+	--mc-action: 3.5rem;
+	--mc-util: 3rem;
+	--mc-gutter: 0.8rem;
+}
+
+#mobile-controls[data-size="md"] {
+	--mc-steer: 5rem;
+	--mc-pedal-w: 4.5rem;
+	--mc-pedal-h: 5.75rem;
+	--mc-action: 3.25rem;
+	--mc-util: 2.85rem;
+	--mc-gutter: 0.7rem;
+}
+
+#mobile-controls[data-size="sm"] {
+	--mc-steer: 4.5rem;
+	--mc-pedal-w: 4.1rem;
+	--mc-pedal-h: 5.25rem;
+	--mc-action: 3rem;
+	--mc-util: 2.75rem;
+	--mc-gutter: 0.6rem;
+}
+
+#mobile-controls[data-size="xs"] {
+	--mc-steer: 4rem;
+	--mc-pedal-w: 3.7rem;
+	--mc-pedal-h: 4.75rem;
+	--mc-action: 2.8rem;
+	--mc-util: 2.75rem;
+	--mc-gutter: 0.5rem;
+}
+
+/* Short landscape phones lose vertical room first. */
+#mobile-controls[data-compact="true"] {
+	--mc-pedal-h: 4.5rem;
+	--mc-steer: 4.25rem;
+	--mc-gutter: 0.55rem;
+}
+
+/* -------------------------------------------------------------------------
+   HARD SIZE FLOORS
+   Applied after every scale rule so no bucket can produce a target that is
+   too small to hit reliably.
+   ------------------------------------------------------------------------- */
+
+#mobile-controls .mc-steer-btn,
+#mobile-controls .mc-pedal,
+#mobile-controls .mc-action-cluster > button,
+#mobile-controls .mc-util-btn,
+#mobile-controls .mc-corner-btn,
+#mobile-controls .mc-interact-btn,
+#mobile-controls .mc-hotbar-slot {
+	min-width: var(--mc-hit-min);
+	min-height: var(--mc-hit-min);
+}
+
+#mobile-controls .mc-steer-btn {
+	width: var(--mc-steer) !important;
+	height: var(--mc-steer) !important;
+}
+
+#mobile-controls .mc-pedal {
+	width: var(--mc-pedal-w) !important;
+	height: var(--mc-pedal-h) !important;
+}
+
+#mobile-controls .mc-pedal-accel {
+	height: calc(var(--mc-pedal-h) + 0.65rem) !important;
+}
+
+#mobile-controls .mc-action-cluster > button {
+	width: var(--mc-action) !important;
+	height: var(--mc-action) !important;
+}
+
+#mobile-controls .mc-util-btn {
+	width: var(--mc-util) !important;
+	height: var(--mc-util) !important;
+}
+
+/* Clear, consistent pressed + disabled feedback for every touch control. */
+#mobile-controls .mc-pressed {
+	filter: brightness(1.25);
+}
+
+#mobile-controls [disabled],
+#mobile-controls [aria-disabled="true"],
+#mobile-controls .mc-disabled {
+	opacity: 0.35;
+	pointer-events: none;
+}
+
+/* =========================================================================
+   LANDSCAPE
+   -------------------------------------------------------------------------
+   Landscape geometry is owned ENTIRELY by ui/landscape-fix.css, the peer of
+   ui/portrait-fix.css, which loads after this file. The rules that used to
+   live here were removed rather than overridden, so there is exactly one
+   place that decides where a landscape control sits.
+   ========================================================================= */
+
+/* =========================================================================
+   PORTRAIT — A GENUINELY DIFFERENT COMPOSITION
+   -------------------------------------------------------------------------
+   The screen is divided horizontally into bands instead of corners:
+
+     top      status band   (vitals, then the compact dash)
+     middle   GAMEPLAY      (never covered)
+     bottom   control deck  (steering left, pedals right, actions between)
+
+   Utilities become a vertical rail on the right edge at mid-height, where
+   they are reachable but nowhere near a driving thumb. The action cluster
+   becomes a horizontal row sitting ON TOP of the deck rather than a column
+   beside the pedals: there is no horizontal room for the landscape
+   arrangement on a phone in portrait.
+   ========================================================================= */
+
+#mobile-controls[data-orientation="portrait"] {
+	--mc-deck-h: calc(var(--mc-pedal-h) + 4.5rem);
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-zone--left {
+	left: var(--mc-edge-x);
+	bottom: var(--mc-edge-b);
+	right: auto;
+	top: auto;
+	flex-direction: row;
+	align-items: flex-end;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-zone--right {
+	right: var(--mc-edge-r);
+	bottom: var(--mc-edge-b);
+	left: auto;
+	top: auto;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.5rem;
+}
+
+/* Pedals keep the bottom-right thumb arc; the action row is lifted out of
+   the pedal row entirely and spans above the deck. */
+#mobile-controls[data-orientation="portrait"] .mc-hud-pedal_clusters {
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.55rem;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-action-cluster {
+	flex-direction: row;
+	gap: 0.5rem;
+}
+
+/* Own row, clear of both thumbs. */
+#mobile-controls[data-orientation="portrait"] .mc-shifter {
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+	right: auto;
+	bottom: calc(var(--mc-edge-b) + var(--mc-deck-h) + 0.75rem);
+}
+
+/* Vertical utility rail on the right edge, vertically centred — far from
+   the bottom deck and from the top status band. */
+#mobile-controls[data-orientation="portrait"] .mc-util {
+	top: 50%;
+	transform: translateY(-50%);
+	right: var(--mc-edge-r);
+	bottom: auto;
+	left: auto;
+	flex-direction: column;
+	gap: 0.45rem;
+}
+
+#mobile-controls[data-orientation="portrait"] .mc-hud-top-actions {
+	position: absolute;
+	top: var(--mc-edge-t);
+	right: var(--mc-edge-r);
+	left: auto;
+	transform: none;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+/* =========================================================================
+   HUD REFLOW AROUND THE TOUCH LAYER
+   -------------------------------------------------------------------------
+   The mobile HUD reuses the existing #hud / #combat-hud markup. These rules
+   replace the older fixed-pixel mobile HUD patches in style.css, which
+   anchored the dash with hard-coded control widths and therefore drifted
+   out of place whenever the layout changed.
+   ========================================================================= */
+
+/* ---- LANDSCAPE: see ui/landscape-fix.css (sections 2-7). ---- */
+
+/* ---- PORTRAIT: a stacked status band, not a shrunken landscape strip ---- */
+body[data-mc-orientation="portrait"] #open-menu{ display: none !important;}
+body[data-mc-orientation="portrait"] #hud {
+	position: fixed;
+	top: calc(var(--mc-edge-t) + 3.4rem) !important;
+	bottom: auto !important;
+	left: var(--mc-edge-x) !important;
+	right: var(--mc-edge-r) !important;
+	transform: none !important;
+	width: auto !important;
+	max-width: none !important;
+	padding: 0 !important;
+	flex-direction: row !important;
+	align-items: stretch !important;
+	justify-content: stretch !important;
+}
+
+/* Full-width dash card: portrait has the horizontal room landscape does not. */
+body[data-mc-orientation="portrait"] #hud .dash {
+	width: 100% !important;
+	max-width: none !important;
+	justify-content: space-between !important;
+}
+
+body[data-mc-orientation="portrait"] #combat-hud {
+	top: var(--mc-edge-t) !important;
+	left: var(--mc-edge-x) !important;
+	right: calc(var(--mc-edge-r) + 6.5rem) !important;
+	bottom: auto !important;
+	width: auto !important;
+	max-width: none !important;
+	padding: 0.35rem 0.55rem !important;
+}
+
+body[data-mc-orientation="portrait"] #objective-strip {
+	top: calc(var(--mc-edge-t) + 7.5rem) !important;
+}
+
+body[data-mc-orientation="portrait"] #game-notice {
+	top: calc(var(--mc-edge-t) + 10rem) !important;
+}
+
+/* Minimap sits on the LEFT edge just above the deck: the right edge is the
+   utility rail and the bottom-right is the pedal cluster. */
+body[data-mc-orientation="portrait"] #minimap-panel {
+	left: var(--mc-edge-x) !important;
+	right: auto !important;
+	transform: none;
+	top: auto !important;
+	bottom: calc(
+		var(--mc-edge-b) + var(--mc-pedal-h, 5.5rem) + 5.5rem
+	) !important;
+}
+
+/* ---- Shared touch-HUD behaviour ---- */
+
+/* The desktop keycap reference is never shown on touch. */
+body.mobile-controls-active #keyboard-panel {
+	display: none !important;
+}
+
+/* Interaction prompt is replaced by the on-screen interact button on touch,
+   so the desktop prompt must not also occupy the middle of the screen. */
+body.mobile-controls-active #interaction-prompt {
+	display: none !important;
+}
+
+/* Inventory becomes a bottom sheet that clears the deck in both
+   orientations instead of a desktop-corner panel. */
+body.mobile-controls-active #inventory-panel {
+	top: auto !important;
+	left: var(--mc-edge-x) !important;
+	right: var(--mc-edge-r) !important;
+	bottom: var(--mc-edge-b) !important;
+	width: auto !important;
+	max-width: none !important;
+	max-height: 55vh !important;
+	overflow-y: auto;
+	z-index: 60;
+}
+
+body.mobile-controls-active #inventory-panel[hidden] {
+	display: none !important;
+}
+
+/* Neutralises the older small-phone rule that reversed the HUD's flex
+   direction; the compositions above own direction now. */
+body.mobile-controls-active #hud {
+	flex-direction: row;
+}

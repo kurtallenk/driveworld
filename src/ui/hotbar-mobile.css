@@ -1,0 +1,55 @@
+/* ---------------------------------------------------------------------------
+   ITEM HOTBAR - TOUCH PLACEMENT
+   ---------------------------------------------------------------------------
+   Loaded after mobile-layout.css. The hotbar has to live in the one region
+   each composition deliberately leaves free, so it never overlaps steering,
+   pedals, handbrake/turbo/turret, the shifter, the minimap or the HUD.
+
+   Landscape: top-centre, between the left steering cluster and the right
+   action cluster, where nothing else is drawn.
+   Portrait:  directly above the thumb deck, full width, under the HUD.
+   --------------------------------------------------------------------------- */
+
+body.mobile-controls-active .hotbar {
+	z-index: 55;
+	gap: 0.5rem;
+}
+
+/* Bigger, finger-sized targets on touch, still compact enough not to eat
+   the road. Matches the shared --mc-hit-min target used by the driving
+   controls. */
+body.mobile-controls-active .hotbar-slot {
+	min-width: 0;
+	min-height: var(--mc-hit-min, 2.75rem);
+	padding: 0.35rem 0.55rem;
+}
+
+body.mobile-controls-active .hotbar-name {
+	font-size: 0.55rem;
+}
+
+/* ---- LANDSCAPE: see ui/landscape-fix.css section 8. ---- */
+
+/* ---- PORTRAIT: its own row above the thumb deck ---- */
+body.mobile-controls-active[data-mc-orientation="portrait"] .hotbar {
+	top: auto;
+	left: var(--mc-edge-x, 0.75rem);
+	right: var(--mc-edge-r, 0.75rem);
+	transform: none;
+
+	/* Sits above the pedal/steering deck that the portrait composition
+	   reserves at the bottom of the screen. */
+	bottom: calc(
+		var(--mc-edge-b, 0.75rem) + var(--mc-pedal-h, 5.5rem) + 6rem
+	);
+
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+}
+
+/* The inventory bottom sheet covers the portrait hotbar row, so hide the
+   bar while the bag is open rather than stacking two item UIs. */
+body.mobile-controls-active #inventory-panel:not([hidden]) ~ .hotbar {
+	opacity: 0.25;
+	pointer-events: none;
+}

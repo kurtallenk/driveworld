@@ -1,0 +1,189 @@
+/* =========================================================================
+   DRIVEWORLD — MINIMAP / NAVIGATION
+   -------------------------------------------------------------------------
+   The navigation layer of the HUD hierarchy. Deliberately a small, chamfered
+   instrument in the bottom-right corner rather than a large translucent
+   card, so it reads as part of the vehicle's dash rather than a web widget.
+
+   Expanded state (#minimap-panel.minimap--expanded) is toggled by the M key
+   and the mobile MAP button; it grows into a centred full-map view for
+   route planning, then collapses back.
+   ========================================================================= */
+
+#minimap-panel {
+	position: fixed;
+	right: calc(var(--dw-sa-r, 0px) + var(--dw-edge, 1rem));
+	bottom: calc(var(--dw-sa-b, 0px) + var(--dw-edge, 1rem));
+	z-index: 18;
+	width: 11.5rem;
+	height: 11.5rem;
+	padding: 0.3rem;
+	background: rgba(10, 13, 16, 0.82);
+	border: 1px solid var(--dw-line-strong);
+	border-radius: var(--dw-r);
+	/* Same chamfer language as the speed binnacle. */
+	clip-path: polygon(
+		0 0.7rem,
+		0.7rem 0,
+		100% 0,
+		100% calc(100% - 0.7rem),
+		calc(100% - 0.7rem) 100%,
+		0 100%
+	);
+	box-shadow: 0 0.6rem 1.4rem rgba(0, 0, 0, 0.45);
+	transition: width 160ms ease, height 160ms ease;
+}
+
+#minimap-panel[hidden] {
+	display: none;
+}
+
+#minimap-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+/* Legend is intentionally tiny and only readable on the expanded map --
+   the compact instrument stays uncluttered. */
+.minimap-legend {
+	display: none;
+	gap: 0.6rem;
+	justify-content: center;
+	padding-top: 0.3rem;
+}
+
+.minimap-key {
+	font: 600 0.55rem/1 var(--dw-font);
+	letter-spacing: 0.12em;
+	color: var(--dw-text-mute);
+}
+
+.minimap-key::before {
+	content: "";
+	display: inline-block;
+	width: 0.45rem;
+	height: 0.45rem;
+	margin-right: 0.3rem;
+	vertical-align: middle;
+}
+
+.minimap-key--poi::before {
+	background: var(--dw-warn);
+}
+
+.minimap-key--enemy::before {
+	background: var(--dw-danger);
+	border-radius: 50%;
+}
+
+.minimap-key--charge::before {
+	background: var(--dw-good);
+	border-radius: 50%;
+}
+
+/* ------------------------------------------------------------------------
+   EXPANDED MAP
+   ------------------------------------------------------------------------ */
+
+#minimap-panel.minimap--expanded {
+	right: 50%;
+	bottom: 50%;
+	transform: translate(50%, 50%);
+	width: min(78vmin, 40rem);
+	height: min(78vmin, 40rem);
+	padding: 0.5rem;
+	background: rgba(8, 10, 13, 0.94);
+	border-color: var(--dw-accent-dim);
+}
+
+#minimap-panel.minimap--expanded .minimap-legend {
+	display: flex;
+}
+
+#minimap-panel.minimap--expanded #minimap-canvas {
+	height: calc(100% - 1.1rem);
+}
+
+/* ------------------------------------------------------------------------
+   HUD VISIBILITY MODES
+   Matches the existing body[data-hud-mode] contract from HudVisibility.js.
+   ------------------------------------------------------------------------ */
+
+body[data-hud-mode="hidden"] #minimap-panel {
+	display: none;
+}
+
+/* ------------------------------------------------------------------------
+   MOBILE
+   Smaller instrument, kept clear of the right-hand pedal column, and always
+   inside the safe area. On phones the expanded map is the primary way to
+   navigate, so it fills more of the screen.
+   ------------------------------------------------------------------------ */
+
+body.mobile-controls-active #minimap-panel {
+	width: 7.5rem;
+	height: 7.5rem;
+}
+
+/* Landscape: the pedals own the bottom-right, so the map moves to the
+   bottom-left above the steering cluster. */
+body[data-mc-orientation="landscape"] #minimap-panel {
+	right: auto;
+	left: calc(var(--dw-sa-l, 0px) + 0.85rem);
+	bottom: calc(var(--dw-sa-b, 0px) + 7.5rem);
+}
+
+/* Portrait: controls sit in a deck across the bottom, so the map tucks into
+   the upper-left instead, under the vitals. */
+body[data-mc-orientation="portrait"] #minimap-panel {
+	right: auto;
+	bottom: auto;
+	left: calc(var(--dw-sa-l, 0px) + 0.85rem);
+	top: calc(var(--dw-sa-t, 0px) + 8.5rem);
+	width: 6.75rem;
+	height: 6.75rem;
+}
+
+body.mobile-controls-active #minimap-panel.minimap--expanded {
+	left: 50%;
+	top: 50%;
+	right: auto;
+	bottom: auto;
+	transform: translate(-50%, -50%);
+	width: min(88vmin, 26rem);
+	height: min(88vmin, 26rem);
+}
+
+/* ------------------------------------------------------------------------
+   PLACEMENT CORRECTION (desktop)
+   The bottom-right corner already belongs to #chat-panel, so the compact
+   map sits directly beneath the vitals column in the top-right instead of
+   fighting the chat window for the same corner.
+   ------------------------------------------------------------------------ */
+
+body:not(.mobile-controls-active) #minimap-panel {
+	top: calc(var(--dw-sa-t, 0px) + 8.25rem);
+	bottom: auto;
+	right: calc(var(--dw-sa-r, 0px) + var(--dw-edge, 1rem));
+	left: auto;
+}
+
+body:not(.mobile-controls-active) #minimap-panel.minimap--expanded {
+	top: 50%;
+	right: 50%;
+	bottom: auto;
+	transform: translate(50%, -50%);
+}
+
+/* ------------------------------------------------------------------------
+   MOBILE STACKING
+   The online-players chip (.op-panel, top-left) and the chat window
+   (#chat-panel, bottom-right) are existing fixed elements, so the touch
+   map placement has to clear both. Portrait drops below the chip;
+   landscape keeps the bottom-left slot above the steering cluster.
+   ------------------------------------------------------------------------ */
+
+body[data-mc-orientation="portrait"] #minimap-panel {
+	top: calc(var(--dw-sa-t, 0px) + 11.5rem);
+}

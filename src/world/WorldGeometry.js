@@ -53,6 +53,113 @@ export function heightAt(x, z) {
 // never drift apart, and so the server can classify grass/asphalt/dirt at
 // any (x, z) without needing three.js.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// POINTS OF INTEREST
+// ---------------------------------------------------------------------------
+// Pure data, declared here (not in a three.js module) for the same reason
+// the road routes are: the authoritative server needs the identical POI
+// layout to anchor enemy spawns, and it cannot import rendering code.
+//
+// Every site is deliberately placed:
+//   * off the carriageway but adjacent to an existing route, so it reads as
+//     a roadside destination rather than a random prop in a field,
+//   * outside the protected player-spawn area (centre -3,-65),
+//   * with an access spur generated below, so it is genuinely drivable to.
+//
+// `level` reuses the existing player level system's scale -- it is a
+// suggested player level, NOT a new difficulty currency. Higher-level sites
+// simply hold more/denser enemies and better loot.
+// ---------------------------------------------------------------------------
+export const POI_SITES = [
+  {
+    id: "depot",
+    name: "ROADSIDE DEPOT",
+    kind: "depot",
+    x: 62,
+    z: -116,
+    radius: 17,
+    level: 1,
+    enemySlots: 2,
+    hostile: true,
+    // Nearest point on the crossSouth carriageway.
+    access: { x: 62, z: -130 }
+  },
+  {
+    id: "gas-station",
+    name: "ABANDONED GAS STATION",
+    kind: "station",
+    x: -58,
+    z: 114,
+    radius: 16,
+    level: 2,
+    enemySlots: 2,
+    hostile: true,
+    access: { x: -58, z: 100 }
+  },
+  {
+    id: "warehouse",
+    name: "DERELICT WAREHOUSE",
+    kind: "warehouse",
+    x: -118,
+    z: -42,
+    radius: 20,
+    level: 3,
+    enemySlots: 3,
+    hostile: true,
+    access: { x: -100, z: -42 }
+  },
+  {
+    id: "repair",
+    name: "REPAIR STATION",
+    kind: "repair",
+    x: -148,
+    z: 62,
+    radius: 15,
+    level: 2,
+    enemySlots: 0,
+    // Neutral: a safe roadside stop, so it is never used as an enemy anchor.
+    hostile: false,
+    access: { x: -148, z: 100 }
+  },
+  {
+    id: "checkpoint",
+    name: "ROADSIDE CHECKPOINT",
+    kind: "checkpoint",
+    x: 20,
+    z: 152,
+    radius: 13,
+    level: 3,
+    enemySlots: 2,
+    hostile: true,
+    access: { x: 0, z: 152 }
+  },
+  {
+    id: "industrial",
+    name: "INDUSTRIAL YARD",
+    kind: "industrial",
+    x: 150,
+    z: 35,
+    radius: 22,
+    level: 5,
+    enemySlots: 4,
+    hostile: true,
+    // Inside the neighbourhood ring road, reached from its western arc.
+    access: { x: 120, z: 35 }
+  },
+  {
+    id: "rest-area",
+    name: "REST AREA",
+    kind: "rest",
+    x: 92,
+    z: 148,
+    radius: 14,
+    level: 1,
+    enemySlots: 1,
+    hostile: true,
+    access: { x: 92, z: 100 }
+  }
+];
+
 export function buildRoadRoutes() {
   const routes = [];
 
@@ -101,6 +208,77 @@ export function buildRoadRoutes() {
     neighborhood.push({ x: 150 + Math.cos(angle) * 30, z: 35 + Math.sin(angle) * 28 });
   }
   routes.push({ points: neighborhood, width: 7, surface: "asphalt", color: 0x3f474e });
+
+  // -------------------------------------------------------------------------
+  // SECONDARY NETWORK
+  // -------------------------------------------------------------------------
+  // The original layout was a spine plus a few isolated loops, which left
+  // large unreachable quadrants. These narrower secondary roads tie the
+  // west, north and east of the map into the existing network and give the
+  // world a readable hierarchy: primary spine (12m) > cross routes (10m) >
+  // secondary links (7-8m) > POI access spurs (5m, dirt).
+  // -------------------------------------------------------------------------
+
+  const westLink = [];
+  for (let i = 0; i <= 120; i++) {
+    const t = i / 120;
+    // Gentle S-curve from the southern cross route up to the northern one,
+    // so the western side is a real driving route rather than a straight.
+    westLink.push({
+      x: -118 - Math.sin(t * Math.PI) * 26,
+      z: -130 + t * 230
+    });
+  }
+  routes.push({ points: westLink, width: 7, surface: "asphalt", color: 0x3a424a });
+
+  const northSpur = [];
+  for (let i = 0; i <= 90; i++) {
+    const t = i / 90;
+    // Links the top of the main spine east towards the rest area, curving
+    // so the junction with the spine is a proper bend, not a T-stub.
+    northSpur.push({
+      x: t * 110,
+      z: 152 - Math.sin(t * Math.PI) * 10
+    });
+  }
+  routes.push({ points: northSpur, width: 8, surface: "asphalt", color: 0x3a424a });
+
+  const eastLink = [];
+  for (let i = 0; i <= 100; i++) {
+    const t = i / 100;
+    // Connects the neighbourhood ring down to the southern cross route,
+    // closing the eastern half of the network into a loop.
+    eastLink.push({
+      x: 150 + Math.sin(t * Math.PI) * 18,
+      z: 7 - t * 137
+    });
+  }
+  routes.push({ points: eastLink, width: 7, surface: "asphalt", color: 0x3a424a });
+
+  // -------------------------------------------------------------------------
+  // POI ACCESS SPURS
+  // -------------------------------------------------------------------------
+  // Generated from the POI table itself so a site can never end up with no
+  // way in: each spur runs from the site's declared access point on an
+  // existing carriageway to the centre of the site.
+  // -------------------------------------------------------------------------
+  for (const site of POI_SITES) {
+    if (!site.access) continue;
+
+    const spur = [];
+    const steps = 24;
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+
+      spur.push({
+        x: site.access.x + (site.x - site.access.x) * t,
+        z: site.access.z + (site.z - site.access.z) * t
+      });
+    }
+
+    routes.push({ points: spur, width: 5, surface: "dirt", color: 0x8d7450 });
+  }
 
   return routes;
 }

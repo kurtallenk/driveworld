@@ -133,6 +133,21 @@ export class TargetSystem {
     // ------------------------------------------------------------------
     this.networked = false;
     this.byId = new Map();
+
+    // ------------------------------------------------------------------
+    // POI ANCHORS
+    // ------------------------------------------------------------------
+    // Optional list of hostile points of interest (see
+    // world/POISystem.js). When present, normal enemies spawn around
+    // these sites instead of anywhere on open grass, which is what
+    // turns them into enemy-controlled areas.
+    //
+    // This changes only WHERE candidate positions are sampled. Every
+    // existing safety rule in findSpawnPosition still applies
+    // unchanged: world bounds, the protected spawn zone, grass-only
+    // surfaces and enemy separation.
+    // ------------------------------------------------------------------
+    this.poiAnchors = [];
   }
 
   // Called once by Game.js right after a MultiplayerClient successfully
@@ -435,13 +450,67 @@ export class TargetSystem {
   // -------------------------------------------------------------------------
   // SPAWN NORMAL ENEMY
   // -------------------------------------------------------------------------
+  setPOIAnchors(anchors) {
+    this.poiAnchors = Array.isArray(anchors) ? anchors : [];
+  }
+
+  // Picks the next POI to populate, preferring under-filled sites so
+  // every area keeps a garrison rather than one site hoarding the
+  // global enemy budget. Returns null when no anchors are configured,
+  // in which case spawning falls back to the original behaviour.
+  pickPOIAnchor() {
+    if (!this.poiAnchors.length) return null;
+
+    const candidates = [];
+
+    for (const site of this.poiAnchors) {
+      const slots = site.enemySlots ?? 2;
+
+      const occupancy = this.targets.filter(
+        target =>
+          target.alive &&
+          target.kind === "normal" &&
+          Math.hypot(
+            target.position.x - site.x,
+            target.position.z - site.z
+          ) <= site.radius + 18
+      ).length;
+
+      if (occupancy < slots) candidates.push(site);
+    }
+
+    if (!candidates.length) return null;
+
+    return candidates[
+      Math.floor(this.random() * candidates.length) % candidates.length
+    ];
+  }
+
   spawnOne(center) {
-    const position = this.findSpawnPosition(
-      center,
-      ENEMY_CONFIG.spawn.minDistance,
-      ENEMY_CONFIG.spawn.maxDistance,
-      this.minDistanceFromPlayerSpawn
-    );
+    const anchor = this.pickPOIAnchor();
+
+    // POI-anchored spawn: sample inside the site's footprint.
+    //
+    // The spawn-protection distance is relaxed from the global
+    // minDistanceFromPlayerSpawn (which exists to stop random
+    // world-wide spawns creeping toward the player's start) to twice
+    // the protected radius, because a POI is a fixed, visible,
+    // deliberately placed location the player chooses to drive to.
+    // The hard protected zone itself is still enforced inside
+    // findSpawnPosition, so nothing ever spawns in the safe area.
+    const position = anchor
+      ? this.findSpawnPosition(
+          { x: anchor.x, z: anchor.z },
+          6,
+          anchor.radius + 10,
+          this.safeZoneRadius * 2
+        )
+      : this.findSpawnPosition(
+          center,
+          ENEMY_CONFIG.spawn.minDistance,
+          ENEMY_CONFIG.spawn.maxDistance,
+          this.minDistanceFromPlayerSpawn
+        );
 
     if (!position) {
       return;

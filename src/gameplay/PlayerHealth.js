@@ -51,6 +51,21 @@ export class PlayerHealth {
     return this.dead ? "destroyed" : "alive";
   }
 
+  // Inverse of applyDamage(), with the same guards. Returns the amount
+  // actually restored so callers can decide whether to consume a
+  // healing item. While networked, HP is server-authoritative and
+  // arrives through applyServerState(), so healing is refused here
+  // rather than silently desyncing the client.
+  heal(amount) {
+    if (this.networked) return 0;
+    if (this.dead || !Number.isFinite(amount) || amount <= 0) return 0;
+
+    const before = this.health;
+    this.health = Math.min(this.maxHealth, this.health + amount);
+
+    return this.health - before;
+  }
+
   applyDamage(amount, source = null) {
     // Authoritative HP changes only ever arrive through applyServerState()
     // while networked -- see that method and requirement #2/#10/#11.

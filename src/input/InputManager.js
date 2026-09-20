@@ -61,6 +61,17 @@ export class InputManager {
     this.keys = new Set();
     this.resetRequested = false;
     this.turretToggleRequested = false;
+
+    // Edge-triggered UI requests, same consume-once contract as the
+    // reset/turret flags above. Kept here rather than in Game.js so
+    // keyboard and touch both funnel through one input surface.
+    this.mapToggleRequested = false;
+    this.inventoryToggleRequested = false;
+    this.interactRequested = false;
+
+    // Hotbar slot request: holds the digit key code ("Digit1"/"Digit2")
+    // until Game.js consumes it, same consume-once contract as above.
+    this.hotbarSlotRequested = null;
     this.devices = [];
 
     this.mode = "keyboard";
@@ -97,7 +108,13 @@ export class InputManager {
 
     const handled = new Set([
       "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR", "KeyF",
-      "ShiftLeft", "ShiftRight"
+      "ShiftLeft", "ShiftRight",
+
+      // UI keys: map, inventory, interact.
+      "KeyM", "KeyI", "KeyE",
+
+      // Consumable hotbar slots.
+      "Digit1", "Digit2"
     ]);
 
     // Same convention as CameraManager: never hijack keys while the
@@ -126,6 +143,24 @@ export class InputManager {
       if (event.code === "KeyF" && !event.repeat) {
         this.turretToggleRequested = true;
       }
+
+      // All edge-triggered for the same reason as KeyF: holding the
+      // key must never repeatedly toggle a panel.
+      if (event.code === "KeyM" && !event.repeat) {
+        this.mapToggleRequested = true;
+      }
+
+      if (event.code === "KeyI" && !event.repeat) {
+        this.inventoryToggleRequested = true;
+      }
+
+      if (event.code === "KeyE" && !event.repeat) {
+        this.interactRequested = true;
+      }
+
+      if ((event.code === "Digit1" || event.code === "Digit2") && !event.repeat) {
+        this.hotbarSlotRequested = event.code;
+      }
     });
 
     window.addEventListener("keyup", (event) => {
@@ -139,6 +174,9 @@ export class InputManager {
       this.keys.clear();
       this.resetRequested = false;
       this.turretToggleRequested = false;
+      this.mapToggleRequested = false;
+      this.inventoryToggleRequested = false;
+      this.interactRequested = false;
       this.mobileTurboHeld = false;
       this.disarm();
     };
@@ -566,6 +604,30 @@ export class InputManager {
   consumeReset() {
     const requested = this.resetRequested;
     this.resetRequested = false;
+    return requested;
+  }
+
+  consumeMapToggle() {
+    const requested = this.mapToggleRequested;
+    this.mapToggleRequested = false;
+    return requested;
+  }
+
+  consumeInventoryToggle() {
+    const requested = this.inventoryToggleRequested;
+    this.inventoryToggleRequested = false;
+    return requested;
+  }
+
+  consumeInteract() {
+    const requested = this.interactRequested;
+    this.interactRequested = false;
+    return requested;
+  }
+
+  consumeHotbarSlot() {
+    const requested = this.hotbarSlotRequested;
+    this.hotbarSlotRequested = null;
     return requested;
   }
 

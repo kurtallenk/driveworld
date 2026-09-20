@@ -1,0 +1,107 @@
+/* ---------------------------------------------------------------------------
+   ITEM HOTBAR
+   ---------------------------------------------------------------------------
+   Two compact consumable slots (medkit / portable battery). Uses the same
+   panel tokens as the rest of the Driveworld HUD so it reads as part of the
+   existing interface rather than a bolted-on RPG bar.
+
+   Desktop placement: bottom-centre, clear of the left dashboard column and
+   the right-hand minimap. Mobile placement is owned by mobile-layout.css,
+   which loads after this file.
+   --------------------------------------------------------------------------- */
+
+.hotbar {
+  position: fixed;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+
+  display: flex;
+  gap: 0.5rem;
+
+  pointer-events: auto;
+}
+
+.hotbar[hidden] {
+  display: none;
+}
+
+.hotbar-slot {
+  position: relative;
+
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0 0.45rem;
+
+  min-width: 6.5rem;
+  padding: 0.4rem 0.6rem;
+
+  font-family: inherit;
+  color: #e8eef5;
+
+  background: rgba(10, 14, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.6rem;
+  backdrop-filter: blur(6px);
+
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, opacity 0.12s ease;
+}
+
+.hotbar-slot:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(18, 26, 36, 0.85);
+}
+
+/* Clear pressed feedback, matching the touch controls. */
+.hotbar-slot--pressed:not(:disabled),
+.hotbar-slot:active:not(:disabled) {
+  filter: brightness(1.3);
+  transform: translateY(1px);
+}
+
+/* Disabled/unavailable state: still visible, obviously not usable. */
+.hotbar-slot:disabled,
+.hotbar-slot--empty {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.hotbar-icon {
+  grid-row: 1 / span 2;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.hotbar-name {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  opacity: 0.85;
+}
+
+.hotbar-qty {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The digit hotkey badge is desktop-only information. */
+.hotbar-key {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.3rem;
+
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+body.mobile-controls-active .hotbar-key {
+  display: none;
+}

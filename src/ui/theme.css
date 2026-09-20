@@ -1,0 +1,860 @@
+/* ==========================================================================
+   DRIVEWORLD — GAME UI DESIGN SYSTEM  (Phase 1)
+   --------------------------------------------------------------------------
+   Loaded AFTER style.css (see main.js) so it re-skins and re-composes the
+   existing HUD markup without deleting any of it. Every selector below
+   targets elements that already exist in index.html; nothing here invents
+   state that the game does not already produce.
+
+   Screen zones (desktop):
+     top-left      online players (existing .op-panel)
+     top-right     combat: HP / LV+XP / boss (existing #combat-hud)
+     top-center    notices + objective
+     bottom-left   control reference (keycaps)
+     bottom-center instrument cluster (speed / gear / rpm / energy)
+     bottom-right  minimap
+   ========================================================================== */
+
+:root {
+  /* --- palette: cool automotive instrument glass ------------------------ */
+  --dw-bg-900: #06090e;
+  --dw-bg-800: #0b1017;
+  --dw-bg-700: #111823;
+  --dw-line:   #ffffff1f;
+  --dw-line-strong: #ffffff33;
+
+  --dw-text:      #e8eff7;
+  --dw-text-dim:  #8fa3b8;
+  --dw-text-mute: #61748a;
+
+  --dw-accent:      #48d5ff;   /* primary instrument accent */
+  --dw-accent-dim:  #48d5ff33;
+  --dw-good:        #4be3a0;
+  --dw-warn:        #ffb04a;
+  --dw-danger:      #ff5a54;
+  --dw-boost:       #ff9a3c;
+
+  /* rarity ramp, reused by the loot/inventory UI in phase 4 */
+  --dw-rar-common:   #9fb0c4;
+  --dw-rar-uncommon: #4be3a0;
+  --dw-rar-rare:     #48b0ff;
+  --dw-rar-epic:     #b981ff;
+
+  /* --- type ------------------------------------------------------------- */
+  --dw-font: "Rajdhani", "Eurostile", "Bahnschrift", "DIN Alternate",
+             "Segoe UI", system-ui, sans-serif;
+  --dw-font-num: "Bahnschrift", "DIN Alternate", "Segoe UI", system-ui, sans-serif;
+
+  /* --- geometry: chamfered, panel-like, not "web card" ------------------ */
+  --dw-r: 3px;
+  --dw-pad: 0.55rem;
+
+  /* --- safe area ------------------------------------------------------- */
+  --dw-sa-t: env(safe-area-inset-top, 0px);
+  --dw-sa-r: env(safe-area-inset-right, 0px);
+  --dw-sa-b: env(safe-area-inset-bottom, 0px);
+  --dw-sa-l: env(safe-area-inset-left, 0px);
+
+  --dw-edge: 1rem;
+}
+
+/* Shared surface treatment: flat dark glass, one hairline, no rounded
+   "card" look, no rainbow gradients. */
+.dw-surface {
+  background:
+    linear-gradient(180deg, #0e151fdd, #070b11e6);
+  border: 1px solid var(--dw-line);
+  border-radius: var(--dw-r);
+  backdrop-filter: blur(8px) saturate(115%);
+  box-shadow:
+    inset 0 1px 0 #ffffff12,
+    0 10px 30px -14px #000c;
+}
+
+/* ==========================================================================
+   1. INSTRUMENT CLUSTER  (#hud > .dash)
+   ========================================================================== */
+
+#hud {
+  position: fixed;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  bottom: calc(var(--dw-sa-b) + var(--dw-edge));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: min(760px, calc(100vw - 2rem));
+  z-index: 5;
+  pointer-events: none;
+  font-family: var(--dw-font);
+}
+
+#hud > * { pointer-events: auto; }
+
+/* The cluster itself: a wide, low instrument binnacle rather than a
+   floating rectangle panel. Angled top corners + a thin accent rule read
+   as "dashboard", not "dialog". */
+.dash {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1.1rem 0.45rem;
+  background: linear-gradient(180deg, #0d141ee0, #05080ceb);
+  border: 1px solid var(--dw-line);
+  border-bottom-color: #ffffff10;
+  border-radius: var(--dw-r);
+  backdrop-filter: blur(9px) saturate(115%);
+  box-shadow:
+    inset 0 1px 0 #ffffff14,
+    inset 0 -18px 30px -24px var(--dw-accent),
+    0 14px 34px -16px #000d;
+  clip-path: polygon(
+    14px 0, calc(100% - 14px) 0, 100% 14px,
+    100% 100%, 0 100%, 0 14px
+  );
+}
+
+/* Thin luminous rule along the top edge — the single "tech" flourish. */
+.dash::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent, var(--dw-accent-dim) 18%, #48d5ff88 50%,
+    var(--dw-accent-dim) 82%, transparent);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* --- warning-light strip: moved onto the binnacle's top rail ----------- */
+.dash-warnings {
+  order: -1;
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 0.1rem;
+  min-height: 0;
+}
+
+.dash-warn {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: grid;
+  place-items: center;
+  color: #2c3a4a;
+  border: 0;
+  background: none;
+  transition: color 0.18s ease, filter 0.18s ease;
+}
+
+.dash-warn svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+
+.dash-warn.dash-warn--on {
+  filter: drop-shadow(0 0 5px currentColor);
+}
+
+#warn-handbrake.dash-warn--on { color: var(--dw-danger); }
+#warn-traction.dash-warn--on  { color: var(--dw-warn); }
+#warn-damage.dash-warn--on    { color: var(--dw-danger); }
+#warn-battery.dash-warn--on   { color: var(--dw-warn); }
+
+/* --- the cluster row --------------------------------------------------- */
+.dash-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+/* PRIMARY: speed. Biggest element on screen by design. */
+.dash-gauge--speed .dash-gauge-ring {
+  width: clamp(104px, 11vw, 132px);
+  height: clamp(104px, 11vw, 132px);
+}
+
+.dash-gauge-track { stroke: #ffffff12; stroke-width: 6; }
+
+.dash-gauge-fill {
+  stroke: var(--dw-accent);
+  stroke-width: 6;
+  stroke-linecap: butt;
+  filter: drop-shadow(0 0 4px #48d5ff66);
+  transition: stroke 0.2s ease;
+}
+
+.dash-gauge-fill.dash-rpm-redline {
+  stroke: var(--dw-danger);
+  filter: drop-shadow(0 0 7px #ff5a5488);
+}
+
+.dash-gauge-ticks line { stroke: #ffffff24; stroke-width: 1.4; }
+
+.dash-speed-value {
+  font-family: var(--dw-font-num);
+  font-size: clamp(2.1rem, 3.4vw, 2.75rem);
+  font-weight: 700;
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  color: #f4f9ff;
+  text-shadow: 0 0 18px #48d5ff40;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-speed-unit {
+  margin-top: 0.15rem;
+  padding: 0.05rem 0.4rem;
+  border: 0;
+  border-radius: 2px;
+  background: #ffffff0f;
+  color: var(--dw-text-dim);
+  font-family: var(--dw-font);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.dash-speed-unit:hover { background: #ffffff1c; color: var(--dw-text); }
+
+.dash-gauge-title {
+  margin-top: 0.15rem;
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--dw-text-mute);
+}
+
+/* Vertical hairline between the gauge and the data column. */
+.dash-info-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: clamp(168px, 17vw, 210px);
+  padding-left: 0.9rem;
+  border-left: 1px solid var(--dw-line);
+}
+
+/* SECONDARY: gear + mode, as a single tab-shaped readout. */
+.dash-gear-badge {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.18rem 0.5rem;
+  background: #ffffff0a;
+  border: 1px solid var(--dw-line);
+  border-radius: 2px;
+}
+
+.dash-gear-mode {
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--dw-accent);
+}
+
+.dash-gear-value {
+  font-family: var(--dw-font-num);
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #f4f9ff;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-engine-pill {
+  align-self: flex-start;
+  padding: 0.08rem 0.42rem;
+  border: 1px solid #4be3a03d;
+  border-radius: 2px;
+  background: #4be3a014;
+  color: var(--dw-good);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.dash-engine-pill--off {
+  border-color: #ff5a543d;
+  background: #ff5a5414;
+  color: var(--dw-danger);
+}
+
+.dash-rpm-value {
+  font-family: var(--dw-font-num);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--dw-text-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- bar rows: clutch / boost / battery share one strict grid ---------- */
+.dash-clutch-row,
+.dash-boost-row,
+.dash-battery-row {
+  display: grid;
+  grid-template-columns: 3.4rem 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.dash-clutch-label,
+.dash-boost-label,
+.dash-battery-label {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dw-text-mute);
+}
+
+.dash-clutch-track,
+.dash-boost-track,
+.dash-battery-track {
+  position: relative;
+  height: 5px;
+  width: auto;
+  border-radius: 1px;
+  background: #ffffff0f;
+  border: 0;
+  overflow: hidden;
+}
+
+.dash-clutch-fill,
+.dash-boost-fill,
+.dash-battery-fill {
+  height: 100%;
+  border-radius: 0;
+  transition: width 0.12s linear, background 0.2s ease;
+}
+
+.dash-clutch-fill  { background: #f5d68a; }
+.dash-boost-fill   { background: var(--dw-boost); }
+.dash-battery-fill { background: var(--dw-good); }
+
+.dash-boost-fill--active   { background: #ffd08a; box-shadow: 0 0 10px #ff9a3c99; }
+.dash-boost-fill--cooldown { background: #6a4a2c; }
+
+.dash-battery-fill--low      { background: var(--dw-warn); }
+.dash-battery-fill--critical { background: var(--dw-danger); }
+.dash-battery-fill--empty    { background: #5a2320; }
+.dash-battery-fill--charging { background: var(--dw-accent); }
+
+.dash-battery-percent {
+  font-family: var(--dw-font-num);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--dw-text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.2rem;
+  text-align: right;
+}
+
+/* --- secondary status pills: demoted to a single quiet strip ----------- */
+.dash-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+}
+
+.dash-pill {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--dw-line);
+  border-radius: 2px;
+  background: #0b111a99;
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  color: var(--dw-text-dim);
+  text-transform: uppercase;
+}
+
+.dash-pill-turret  { color: #9fd8ff; border-color: #48b0ff2e; }
+.dash-pill-turbo   { color: #ffce9c; border-color: #ff9a3c2e; }
+.dash-pill-battery { color: #9fe9c6; border-color: #4be3a02e; }
+
+.dash-pill-turbo--active   { color: #fff1e0; border-color: #ff9a3c; background: #ff9a3c22; }
+.dash-pill-turbo--cooldown { color: var(--dw-text-mute); }
+
+.dash-pill-battery--charging { color: var(--dw-accent); border-color: #48d5ff55; }
+.dash-pill-battery--low      { color: var(--dw-warn); border-color: #ffb04a55; }
+.dash-pill-battery--critical,
+.dash-pill-battery--empty    { color: var(--dw-danger); border-color: #ff5a5455; }
+
+/* Turret/turbo pills duplicate the gauges beside them; only show the ones
+   that carry information the cluster does not already show. */
+.dash-pill-battery { display: none; }
+
+#hud #start-engine {
+  margin: 0.15rem 0 0;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid #4be3a055;
+  border-radius: 2px;
+  background: #4be3a014;
+  color: var(--dw-good);
+  font-family: var(--dw-font);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* ==========================================================================
+   2. CONTROL REFERENCE  (#keyboard-panel)
+   --------------------------------------------------------------------------
+   Mode-aware: index.html carries both an arcade group and a manual group;
+   Game.js sets data-mode on the panel and the CSS below shows the matching
+   one. Nothing is listed that the game does not actually bind.
+   ========================================================================== */
+
+.kbd-panel {
+  position: fixed;
+  left: calc(var(--dw-sa-l) + var(--dw-edge));
+  bottom: calc(var(--dw-sa-b) + var(--dw-edge));
+  top: auto;
+  right: auto;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem 0.7rem 0.5rem;
+  background: linear-gradient(180deg, #0c121bcc, #06090ed9);
+  border: 1px solid var(--dw-line);
+  border-radius: var(--dw-r);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 #ffffff10, 0 10px 26px -16px #000c;
+  font-family: var(--dw-font);
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+/* Fades back while actually driving so it never competes with the road. */
+.kbd-panel.kbd-panel--minimal { opacity: 0.22; }
+.kbd-panel:hover,
+.kbd-panel.kbd-panel--minimal:hover { opacity: 1; }
+
+.kbd-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  color: var(--dw-accent);
+  text-transform: uppercase;
+}
+
+.kbd-panel-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--dw-accent-dim), transparent);
+}
+
+/* Mode swapping. */
+.kbd-modegroup { display: none; flex-direction: column; gap: 0.35rem; }
+.kbd-panel[data-mode="arcade"] .kbd-modegroup--arcade { display: flex; }
+.kbd-panel[data-mode="manual"] .kbd-modegroup--manual { display: flex; }
+
+.kbd-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.kbd-row--mini {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.3rem 0.5rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid #ffffff12;
+}
+
+.kbd-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 2.1rem;
+}
+
+/* Keycap: sculpted, physical, not a web button. */
+.kbd-key {
+  display: grid;
+  place-items: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.35rem;
+  border-radius: 4px;
+  border: 1px solid #ffffff26;
+  border-bottom-width: 3px;
+  border-bottom-color: #00000080;
+  background: linear-gradient(180deg, #24303f, #141c27);
+  color: #dce8f5;
+  font-family: var(--dw-font-num);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 1px 0 #ffffff1f;
+  transition: transform 0.06s ease, background 0.08s ease,
+              border-color 0.08s ease, color 0.08s ease;
+}
+
+.kbd-key--wide { min-width: 3.6rem; font-size: 0.6rem; letter-spacing: 0.1em; }
+.kbd-key--mini { min-width: 1.35rem; height: 1.35rem; font-size: 0.6rem; border-bottom-width: 2px; }
+
+.kbd-key.kbd-key--active {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+  border-color: var(--dw-accent);
+  background: linear-gradient(180deg, #14435a, #0d2a3a);
+  color: #eaf9ff;
+  box-shadow: 0 0 14px -2px #48d5ff88, inset 0 1px 0 #ffffff26;
+}
+
+.kbd-caption {
+  font-size: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dw-text-mute);
+  white-space: nowrap;
+}
+
+.kbd-mini {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dw-text-mute);
+}
+
+/* A device note ("wheel required") for controls the keyboard cannot do. */
+.kbd-note {
+  font-size: 0.48rem;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  color: var(--dw-text-mute);
+  text-transform: uppercase;
+  max-width: 13rem;
+}
+
+.kbd-note b { color: var(--dw-warn); font-weight: 700; }
+
+/* ==========================================================================
+   3. COMBAT / VITALS  (#combat-hud)
+   ========================================================================== */
+
+#combat-hud {
+  position: fixed;
+  top: calc(var(--dw-sa-t) + var(--dw-edge));
+  right: calc(var(--dw-sa-r) + var(--dw-edge));
+  left: auto;
+  bottom: auto;
+  z-index: 5;
+  width: clamp(190px, 17vw, 232px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  background: linear-gradient(180deg, #0c121bcc, #06090ed9);
+  border: 1px solid var(--dw-line);
+  border-radius: var(--dw-r);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 #ffffff10, 0 10px 26px -16px #000c;
+  font-family: var(--dw-font);
+}
+
+.combat-row {
+  display: grid;
+  grid-template-columns: 1.1rem 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.combat-row-icon { width: 1.1rem; height: 1.1rem; color: var(--dw-danger); }
+.combat-row-icon svg { width: 100%; height: 100%; fill: currentColor; stroke: none; }
+
+.combat-row-label {
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--dw-accent);
+  min-width: 0;
+}
+
+.combat-bar-track {
+  height: 6px;
+  border-radius: 1px;
+  background: #ffffff0f;
+  border: 0;
+  overflow: hidden;
+}
+
+.combat-bar-fill { height: 100%; border-radius: 0; transition: width 0.15s linear; }
+.combat-bar-hp { background: linear-gradient(90deg, #ff5a54, #ff8d6b); }
+.combat-bar-xp { background: linear-gradient(90deg, #48d5ff, #7de2bf); }
+
+.combat-row-value {
+  font-family: var(--dw-font-num);
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--dw-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+#boss-hud {
+  margin-top: 0.15rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid #ff5a5433;
+}
+
+#boss-name {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--dw-danger);
+  text-align: center;
+  text-shadow: 0 0 12px #ff5a5466;
+}
+
+/* ==========================================================================
+   4. OBJECTIVE + NOTICES (top center)
+   ========================================================================== */
+
+#game-notice {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  /* top: calc(var(--dw-sa-t) + 4.6rem); */
+
+  top: 20%;
+  bottom: auto;
+  z-index: 8;
+  padding: 0.4rem 1.1rem;
+  background: #070b11e0;
+  border: 1px solid var(--dw-line-strong);
+  border-left: 2px solid var(--dw-accent);
+  border-radius: 2px;
+  color: var(--dw-text);
+  font-family: var(--dw-font);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 30px -16px #000;
+  max-width: min(520px, calc(100vw - 2rem));
+}
+
+@media (min-width: 800px) {
+  #game-notice {
+    font-size: 1.38rem;
+  }
+}
+
+
+
+/* Objective strip — driven by HudRuntime (phase 3/4). Hidden until set. */
+#objective-strip {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(var(--dw-sa-t) + var(--dw-edge));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.28rem 0.8rem;
+  background: #070b11cc;
+  border: 1px solid var(--dw-line);
+  border-radius: 2px;
+  backdrop-filter: blur(7px);
+  font-family: var(--dw-font);
+  pointer-events: none;
+}
+
+#objective-strip[hidden] { display: none; }
+
+.objective-kicker {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  color: var(--dw-accent);
+}
+
+.objective-text {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--dw-text);
+}
+
+/* ==========================================================================
+   5. CORNER CHIPS  (#open-menu, #hud-mode-toggle)
+   ========================================================================== */
+
+#open-menu,
+#hud-mode-toggle {
+  position: fixed;
+  z-index: 7;
+  padding: 0.38rem 0.7rem;
+  border: 1px solid var(--dw-line);
+  border-radius: 2px;
+  background: #0b1017cc;
+  backdrop-filter: blur(7px);
+  color: var(--dw-text-dim);
+  font-family: var(--dw-font);
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+#open-menu {
+  top: calc(var(--dw-sa-t) + var(--dw-edge));
+  left: calc(var(--dw-sa-l) + var(--dw-edge));
+  background: #0b1017cc;
+}
+
+#hud-mode-toggle {
+  top: calc(var(--dw-sa-t) + var(--dw-edge));
+  right: auto;
+  left: calc(var(--dw-sa-l) + var(--dw-edge) + 7.2rem);
+}
+
+#open-menu:hover,
+#hud-mode-toggle:hover {
+  color: var(--dw-text);
+  border-color: var(--dw-accent);
+  background: #12202bcc;
+}
+
+/* The online-players panel is anchored below these chips. */
+.op-panel {
+  /* top: calc(var(--dw-sa-t) + var(--dw-edge) + 2.5rem); */
+  left: calc(var(--dw-sa-l) + var(--dw-edge));
+  font-family: var(--dw-font);
+  border-radius: var(--dw-r);
+  border-color: var(--dw-line);
+}
+
+/* ==========================================================================
+   6. SETTINGS MENU — same design language
+   ========================================================================== */
+
+#settings-menu { font-family: var(--dw-font); }
+
+.settings-window {
+  background: linear-gradient(180deg, #0c121bf5, #06090efa);
+  border: 1px solid var(--dw-line-strong);
+  border-radius: var(--dw-r);
+}
+
+.settings-header h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--dw-text);
+}
+
+.settings-tabs {
+  gap: 0;
+  border-bottom: 1px solid var(--dw-line);
+}
+
+.settings-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--dw-text-mute);
+  font-family: var(--dw-font);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.settings-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--dw-accent);
+  background: none;
+  color: var(--dw-text);
+}
+
+/* ==========================================================================
+   7. HUD VISIBILITY MODES — extended for the new elements
+   ========================================================================== */
+
+body[data-hud-mode="simplified"] #objective-strip,
+body[data-hud-mode="simplified"] #minimap-panel {
+  display: none;
+}
+
+body[data-hud-mode="hidden"] #objective-strip,
+body[data-hud-mode="hidden"] #minimap-panel,
+body[data-hud-mode="hidden"] #keyboard-panel {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-gauge-fill,
+  .combat-bar-fill,
+  .dash-battery-fill { transition: none; }
+}
+
+/* =========================================================================
+   LAYOUT CORRECTIONS
+   -------------------------------------------------------------------------
+   A transformed element becomes the containing block for its position:fixed
+   descendants. #hud used translateX(-50%) to centre the cluster, which
+   silently re-anchored #keyboard-panel (a child of #hud) to the cluster box
+   so the two panels stacked on top of each other. Centre with a full-width
+   flex row instead, so no transform is involved.
+   ========================================================================= */
+
+#hud {
+  left: 0;
+  right: 0;
+  transform: none;
+  max-width: none;
+  padding: 0 var(--dw-edge);
+}
+
+#hud .dash {
+  max-width: min(760px, calc(100vw - 2rem));
+}
+
+/* On short/narrow desktop windows the keycap reference would collide with
+   the cluster, so it steps aside instead of overlapping. */
+@media (max-width: 900px), (max-height: 560px) {
+  body:not(.mobile-controls-active) #keyboard-panel {
+    display: none;
+  }
+}

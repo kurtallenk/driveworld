@@ -1,0 +1,199 @@
+/* ---------------------------------------------------------------------------
+   DESKTOP HUD LAYOUT (Phase 4)
+   ---------------------------------------------------------------------------
+   Docks the existing HUD shell to the LEFT side of the screen and stacks the
+   existing keyboard reference ABOVE the existing dashboard:
+
+     [ KEYBOARD CONTROLS  - ]
+     [ DASHBOARD           ]
+
+   Nothing here invents new HUD content. #hud already contains the dashboard
+   and the keycap panel; this file only owns their position, stacking and the
+   collapsed state of the keyboard panel.
+
+   Touch layouts are untouched: mobile-layout.css still hides #keyboard-panel
+   on touch devices and owns the mobile HUD composition.
+   --------------------------------------------------------------------------- */
+
+body:not(.mobile-controls-active) #hud {
+	/* Left column, bottom-anchored, clear of the right-hand minimap and the
+	   top-right combat HUD. */
+	left: calc(env(safe-area-inset-left, 0px) + 1rem);
+	right: auto;
+	bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+	top: auto;
+
+	padding: 0;
+
+	display: flex;
+
+	/* column-reverse + DOM order (dashboard first, keyboard panel second)
+	   puts the keyboard panel visually ABOVE the dashboard. */
+	flex-direction: column-reverse;
+	align-items: flex-start;
+	gap: 0.55rem;
+
+	max-width: min(360px, calc(100vw - 2rem));
+
+	/* Never taller than the viewport, so the stacked pair can always be
+	   reached even on short windows. */
+	max-height: calc(100vh - 2rem);
+}
+
+body:not(.mobile-controls-active) #hud .dash {
+	/* The cluster is now a left-column panel, not a centred bar. */
+	max-width: min(340px, calc(100vw - 2rem));
+	width: 100%;
+}
+
+body:not(.mobile-controls-active) #keyboard-panel {
+	/* theme.css pinned the keycap panel with position:fixed at the SAME
+	   bottom-left corner the dashboard uses, so the two panels stacked on
+	   top of each other. It is a child of #hud, so it must flow inside the
+	   HUD column instead of being independently pinned. */
+	position: static;
+	left: auto;
+	right: auto;
+	top: auto;
+	bottom: auto;
+
+	width: 100%;
+	max-width: min(340px, calc(100vw - 2rem));
+	align-items: stretch;
+	transform-origin: bottom left;
+}
+
+/* The old rule hid the keycap reference entirely on short/narrow desktop
+   windows because it used to sit beside the cluster and collide with it.
+   It is stacked above the dashboard now, and it has an explicit minimise
+   control, so it stays available instead of vanishing. */
+@media (max-width: 900px), (max-height: 560px) {
+	body:not(.mobile-controls-active) #keyboard-panel:not([hidden]) {
+		display: flex;
+	}
+}
+
+/* ---- Dashboard fits the left column ----
+   The cluster used to be a wide bottom-centre bar, so .dash-info-col could
+   afford min-width: clamp(168px, 17vw, 210px). In the narrower left column
+   that hard floor pushed the info column past the dashboard's right edge.
+   It now shrinks with the column instead of overflowing it. */
+
+body:not(.mobile-controls-active) #hud .dash-cluster {
+	width: 100%;
+	min-width: 0;
+	flex-wrap: nowrap;
+	justify-content: flex-start;
+	gap: 0.7rem;
+}
+
+body:not(.mobile-controls-active) #hud .dash-info-col {
+	flex: 1 1 auto;
+	min-width: clamp(132px, 10vw, 190px);
+	padding-left: 0.7rem;
+	overflow: hidden;
+}
+
+/* The speedometer keeps its shape while the info column absorbs the
+   remaining width, so nothing is clipped on narrower desktop windows. */
+body:not(.mobile-controls-active) #hud .dash-gauge--speed {
+	flex: 0 0 auto;
+}
+
+body:not(.mobile-controls-active) #hud .dash-gauge--speed .dash-gauge-ring {
+	width: clamp(86px, 8vw, 118px);
+	height: clamp(86px, 8vw, 118px);
+}
+
+body:not(.mobile-controls-active) #hud .dash-secondary,
+body:not(.mobile-controls-active) #hud .dash-warnings {
+	flex-wrap: wrap;
+	max-width: 100%;
+}
+
+/* ---- Panel header + minimise button ----
+   The header is: title text, then the decorative rule, then the toggle
+   hard against the right edge inside the panel:
+
+       ARCADE CONTROLS ----------------------------------  [-]
+
+   theme.css gives .kbd-panel-title a ::after divider with `flex: 1`. As a
+   flex item that grows, and being last in document order, it was landing
+   AFTER the appended button and pushing it into the middle of the row --
+   which is what made the toggle look centred. Giving the button a later
+   `order` puts the divider back between the title and the button without
+   touching theme.css or adding a wrapper element. */
+
+.kbd-panel-title--row {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	width: 100%;
+}
+
+.kbd-panel-title--row .kbd-panel-toggle {
+	order: 1;
+	margin-left: auto;
+}
+
+.kbd-panel-toggle {
+	flex: none;
+
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+
+	width: 1.35rem;
+	height: 1.35rem;
+	padding: 0;
+
+	font-family: inherit;
+	font-size: 0.9rem;
+	line-height: 1;
+	color: #cfe0f0;
+
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	border-radius: 0.35rem;
+
+	cursor: pointer;
+	transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.kbd-panel-toggle:hover {
+	background: rgba(255, 255, 255, 0.18);
+	border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* ---- Collapsed state ---- */
+
+/* The collapsible region. KeyboardPanelControls wraps the panel's original
+   children in this so inert/aria-hidden have a target that excludes the
+   header -- see the note at the top of that module. */
+.kbd-panel--collapsed .kbd-panel-body {
+	display: none;
+}
+
+.kbd-panel-body[inert] {
+	pointer-events: none;
+}
+
+/* Collapsed keeps only the header bar: minimal footprint, still clickable
+   to restore, and it never covers the road. */
+.kbd-panel--collapsed .kbd-modegroup,
+.kbd-panel--collapsed .kbd-row,
+.kbd-panel--collapsed .kbd-note {
+	display: none !important;
+}
+
+.kbd-panel--collapsed {
+	padding: 0.35rem 0.55rem;
+	cursor: pointer;
+}
+
+/* Collapsed is a deliberate player choice, so it must not also be faded
+   out by the existing "minimal while driving" rule. */
+.kbd-panel--collapsed.kbd-panel--minimal {
+	opacity: 0.8;
+	transform: none;
+}

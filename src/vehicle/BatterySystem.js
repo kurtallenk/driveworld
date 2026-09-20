@@ -191,6 +191,40 @@ export class BatterySystem {
     };
   }
 
+  // -------------------------------------------------------------------
+  // ADD CHARGE
+  // -------------------------------------------------------------------
+  // Instant charge from an off-station source (the Portable Battery
+  // loot item). Intentionally lives here rather than in the item code
+  // so there is exactly one battery model: it obeys the same
+  // maxBattery cap and fires the same onStateChange transition that
+  // update() does, which means the existing HUD warnings, turret
+  // lockout and audio cues react to it automatically.
+  //
+  // Returns the amount actually added, so the caller can report
+  // "+25% BATTERY" honestly (or refuse to consume the item at full
+  // charge).
+  addCharge(amount) {
+    if (!Number.isFinite(amount) || amount <= 0) return 0;
+
+    const before = this.percent;
+
+    this.percent = Math.max(
+      0,
+      Math.min(this.config.maxBattery, this.percent + amount)
+    );
+
+    const newState = this.state;
+
+    if (newState !== this._previousState) {
+      const oldState = this._previousState;
+      this._previousState = newState;
+      this.onStateChange?.(newState, oldState);
+    }
+
+    return this.percent - before;
+  }
+
   reset() {
     this.percent = this.config.maxBattery;
     this.turretEngagedTime = 0;

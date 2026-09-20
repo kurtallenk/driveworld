@@ -1,0 +1,116 @@
+/* ---------------------------------------------------------------------------
+   DRIVEWORLD - LAYER SCALE
+   ---------------------------------------------------------------------------
+   Loaded FIRST (see main.js). This file only DECLARES the scale; every layer
+   is assigned in the stylesheet that already owns that element, by naming a
+   token instead of a number. There is therefore no override war here: nothing
+   in this file competes with a later rule.
+
+   WHY THIS EXISTS
+   ---------------------------------------------------------------------------
+   The settings menu could be covered by the touch controls. That was not a
+   problem with one element's z-index, it was a problem with the scale: the
+   modal had been sitting at 20 while four later stylesheets had independently
+   climbed past it.
+
+     #settings-menu ............................. 20   <- modal, was BELOW
+     #mobile-controls ........................... 30
+     .hotbar (touch) ............................ 55
+     mobile-layout.css (interact button) ........ 60
+     portrait-fix.css (chat) .................... 99
+
+   Every one of those elements is a direct child of <body>, and <body> has no
+   transform, filter, opacity or containment, so they all compete inside the
+   SAME stacking context as the root. That is what makes a single ordered
+   scale sufficient - there is no trapped context to unwrap, and nothing
+   needed `isolation` to be added.
+
+   THE SCALE
+   ---------------------------------------------------------------------------
+   Values below 100 are the layers that existed before and keep their exact
+   numbers, so naming them changes nothing visually. The three layers above
+   100 are the "nothing may cover this" band.
+
+   INVARIANT: no element anywhere in the project may declare a z-index above
+   --z-modal except --z-boot. If a new panel needs to sit higher than
+   something, add a token here rather than picking a number at the call site.
+   --------------------------------------------------------------------------- */
+
+:root {
+	/* --- world ------------------------------------------------------- */
+	--z-world: 0; /* #game canvas */
+
+	/* --- passive readouts -------------------------------------------- */
+	--z-hud: 4; /* #hud, #combat-hud */
+	--z-chat: 5; /* #chat-panel, #chat-show */
+	--z-hud-chip: 9; /* .op-panel, #open-menu, #hud-mode-toggle */
+	--z-minimap: 18; /* #minimap-panel */
+	--z-loot: 24; /* loot markers */
+
+	/* --- interactive game UI ----------------------------------------- */
+	--z-touch: 30; /* #mobile-controls */
+	--z-hotbar: 40; /* .hotbar (desktop) */
+	--z-hotbar-touch: 55; /* .hotbar (touch) */
+	--z-touch-overlay: 60; /* interact button, portrait deck extras */
+	--z-chat-touch: 99; /* chat, above the touch deck */
+
+	/* --- "nothing may cover this" band -------------------------------- */
+	--z-notice: 200; /* #game-notice, #level-up-banner, #damage-flash */
+	--z-screen-effect: 300; /* #death-screen */
+	--z-modal: 900; /* #settings-menu - the top interactive layer */
+	--z-boot: 950; /* #loading - covers everything until Drive */
+}
+
+/* ---------------------------------------------------------------------------
+   MODAL INTERACTION LOCK
+   ---------------------------------------------------------------------------
+   Being on top is not enough on its own: the settings window is centred, so
+   the corners of the screen still show live game UI around it, and a steering
+   button in an exposed corner would happily take a tap meant for the modal's
+   backdrop.
+
+   `body.menu-open` is written by SettingsMenu.open()/close(). It does not
+   hide anything - the player should still see the game state behind the
+   blur - it only removes pointer interaction from every non-modal layer.
+
+   The !important is deliberate and is the whole reason this block works:
+   #mobile-controls is `pointer-events: none` with `#mobile-controls button {
+   pointer-events: auto }` underneath it, and #hud does the same with
+   `#hud > *`. Those inner rules exist specifically to escape a container's
+   `none`, so a plain `pointer-events: none` on the container cannot reach
+   them. Re-stating it on the descendants at the same weight is the narrowest
+   correct fix; it is scoped to one body class that only exists while the
+   modal is open.
+   --------------------------------------------------------------------------- */
+
+body.menu-open #mobile-controls,
+body.menu-open #mobile-controls *,
+body.menu-open #hud,
+body.menu-open #hud *,
+body.menu-open #combat-hud,
+body.menu-open #combat-hud *,
+body.menu-open .hotbar,
+body.menu-open .hotbar *,
+body.menu-open #chat-panel,
+body.menu-open #chat-panel *,
+body.menu-open #chat-show,
+body.menu-open .op-panel,
+body.menu-open .op-panel *,
+body.menu-open #minimap-panel,
+body.menu-open #inventory-panel,
+body.menu-open #inventory-panel *,
+body.menu-open #interaction-prompt,
+body.menu-open #objective-strip,
+body.menu-open #open-menu,
+body.menu-open #hud-mode-toggle,
+body.menu-open #keyboard-panel,
+body.menu-open #keyboard-panel * {
+	pointer-events: none !important;
+}
+
+/* The modal itself is never in the list above, and is re-stated here so it
+   can never be caught by a future broad selector. */
+body.menu-open #settings-menu,
+body.menu-open #settings-menu * {
+	pointer-events: auto;
+}
