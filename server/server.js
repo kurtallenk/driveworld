@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { EnemyWorld } from "./EnemyWorld.js";
+import { LootWorld } from "./LootWorld.js";
 import { ENEMY_CONFIG, PLAYER_CONFIG, TURRET_CONFIG } from "../src/turret/TurretConfig.js";
 import { getEvolutionStage } from "../src/gameplay/EvolutionConfig.js";
 
@@ -34,6 +35,16 @@ const CHAT_LIMIT_PER_WINDOW = 6;
 const ENEMY_TICK_RATE = 12; // Hz -- simulation + broadcast rate for enemies
 const ENEMY_TICK_MS = 1000 / ENEMY_TICK_RATE;
 const enemyWorld = new EnemyWorld();
+
+// ---------------------------------------------------------------------------
+// AUTHORITATIVE LOOT WORLD
+// ---------------------------------------------------------------------------
+// World pickups used to be rolled client-side and were therefore private to
+// whoever earned the kill. They are now owned here, alongside the enemy
+// world, and travel over this same WebSocket protocol so every connected
+// player sees the same pickup, at the same world position, with the same id.
+// ---------------------------------------------------------------------------
+const lootWorld = new LootWorld();
 
 // A player's turret damage can be boosted by leveling (see PLAYER_CONFIG's
 // turretDamageBonusPerInterval in TurretConfig.js), so a single fixed
@@ -480,6 +491,12 @@ function onEnemyKilled(killerPlayerId, enemy) {
     kind: enemy.kind,
     xpReward
   });
+
+  // Loot is rolled HERE, from the authoritative enemy record, so the drop
+  // lands at the enemy's real death position -- never at the killer's
+  // position, the camera, or the world origin. LootWorld.onSpawn broadcasts
+  // it to everyone (see the hooks near the bottom of this file).
+  lootWorld.dropFromEnemy(enemy);
 }
 
 // Only the turret's state/aim/fire-event fields are ever synchronized (see
@@ -673,7 +690,11 @@ wss.on("connection", (ws, request) => {
     // New player joining must see the CURRENT enemy world, never spawn
     // their own separate set (requirement #8's "initial enemy state when a
     // player joins").
-    enemies: enemyWorld.serialize(players)
+    enemies: enemyWorld.serialize(players),
+
+    // Same rule as enemies: a joining player sees the CURRENT world drops,
+    // not an empty world or their own private set.
+    pickups: lootWorld.serialize()
   });
 
   broadcast({
@@ -771,6 +792,40 @@ wss.on("connection", (ws, request) => {
       return;
     }
 
+    if (message?.type === "pickupRequest") {
+      // The client never deletes a world pickup on its own -- it asks, and
+      // the server decides. claim() checks the pickup still exists, is
+      // still available, and that this player is genuinely close enough,
+      // and latches the winner so two simultaneous requests can never both
+      // succeed.
+      if (player.combat.dead) return;
+
+      const result = lootWorld.claim(message.pickupId, player);
+
+      if (!result.ok) {
+        // Tell the requester the attempt failed so it can clear any stale
+        // prompt/target instead of waiting for a timeout.
+        send(ws, {
+          type: "pickupDenied",
+          pickupId: message.pickupId,
+          reason: result.reason
+        });
+
+        return;
+      }
+
+      // Award first, then remove: remove() broadcasts the removal to
+      // everybody (including this player) via the onRemove hook.
+      send(ws, {
+        type: "pickupGranted",
+        pickupId: result.pickup.pickupId,
+        itemId: result.pickup.itemId
+      });
+
+      lootWorld.remove(result.pickup.pickupId, "collected");
+      return;
+    }
+
     if (message?.type === "delivery") {
       const now = Date.now();
 
@@ -839,6 +894,25 @@ wss.on("connection", (ws, request) => {
 enemyWorld.onPlayerDamage = applyDamageToPlayer;
 enemyWorld.onEnemyKilled = onEnemyKilled;
 
+// Every pickup create/remove reaches every client through the existing
+// broadcast helper -- no second networking stack.
+lootWorld.onSpawn = pickup => {
+  broadcast({
+    type: "pickupSpawn",
+    pickup: {
+      pickupId: pickup.pickupId,
+      itemId: pickup.itemId,
+      x: pickup.x,
+      y: pickup.y,
+      z: pickup.z
+    }
+  });
+};
+
+lootWorld.onRemove = (pickupId, reason) => {
+  broadcast({ type: "pickupRemoved", pickupId, reason });
+};
+
 const snapshotTimer = setInterval(() => {
   if (!players.size) return;
 
@@ -879,6 +953,9 @@ const enemyTimer = setInterval(() => {
       syncCombatIntoState(player);
     }
   }
+
+  // Pickup expiry rides the same clock as the enemy simulation.
+  lootWorld.update(dt);
 
   if (players.size > 0) {
     enemyWorld.update(dt, players);

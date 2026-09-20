@@ -240,6 +240,19 @@
               </div>
             </div>
 
+            <!-- RPM as a bar rather than the dial. Only shown by the
+                 portrait SIMPLIFIED preset, which drops the speedometer
+                 and therefore has no other place to put engine speed
+                 (see ui/portrait-fix.css). Same source value as the dial
+                 and the numeric readout above; no new telemetry. -->
+            <div class="dash-rpm-row">
+              <span class="dash-rpm-label">RPM</span>
+              <div class="dash-rpm-track">
+                <div id="dash-rpm-bar-fill" class="dash-rpm-bar-fill"></div>
+              </div>
+              <span id="dash-rpm-bar-value" class="dash-rpm-bar-value">900 RPM</span>
+            </div>
+
             <div class="dash-boost-row">
               <span class="dash-boost-label">Boost</span>
               <div class="dash-boost-track">
@@ -274,44 +287,88 @@
            while the active input source is the keyboard (see Game.js).
            Manual mode isn't keyboard-capable (see InputManager.isManualCapable),
            so this only ever needs the arcade layout. -->
-      <div id="keyboard-panel" class="kbd-panel" hidden aria-hidden="true">
-        <div class="kbd-panel-title">ARCADE CONTROLS</div>
-        <div class="kbd-row kbd-row--top">
-          <div class="kbd-group">
-            <span class="kbd-key" data-key="KeyW">W</span>
-            <span class="kbd-caption">Accelerate</span>
+      <div id="keyboard-panel" class="kbd-panel" data-mode="arcade" hidden aria-hidden="true">
+        <div class="kbd-panel-title"><span id="kbd-panel-mode">ARCADE</span> CONTROLS</div>
+
+        <!-- ARCADE: exactly what ArcadeController + InputManager bind. -->
+        <div class="kbd-modegroup kbd-modegroup--arcade">
+          <div class="kbd-row kbd-row--top">
+            <div class="kbd-group">
+              <span class="kbd-key" data-key="KeyW">W</span>
+              <span class="kbd-caption">Gas</span>
+            </div>
+          </div>
+          <div class="kbd-row kbd-row--mid">
+            <div class="kbd-group">
+              <span class="kbd-key" data-key="KeyA">A</span>
+              <span class="kbd-caption">Left</span>
+            </div>
+            <div class="kbd-group">
+              <span class="kbd-key" data-key="KeyS">S</span>
+              <span class="kbd-caption">Brake / Rev</span>
+            </div>
+            <div class="kbd-group">
+              <span class="kbd-key" data-key="KeyD">D</span>
+              <span class="kbd-caption">Right</span>
+            </div>
+          </div>
+          <div class="kbd-row kbd-row--wide">
+            <div class="kbd-group">
+              <span class="kbd-key kbd-key--wide" data-key="Space">SPACE</span>
+              <span class="kbd-caption">Handbrake</span>
+            </div>
+            <div class="kbd-group">
+              <span class="kbd-key kbd-key--wide" data-key="ShiftLeft" data-key-alt="ShiftRight">SHIFT</span>
+              <span class="kbd-caption">Turbo</span>
+            </div>
           </div>
         </div>
-        <div class="kbd-row kbd-row--mid">
-          <div class="kbd-group">
-            <span class="kbd-key" data-key="KeyA">A</span>
-            <span class="kbd-caption">Left</span>
+
+        <!-- MANUAL / REALISTIC PROTOTYPE: the keyboard cannot supply clutch
+             or an H-pattern gear (see InputManager.isManualCapable), so the
+             two controls it genuinely cannot bind are shown as device-
+             required rather than as fake keycaps. -->
+        <div class="kbd-modegroup kbd-modegroup--manual">
+          <div class="kbd-row kbd-row--top">
+            <div class="kbd-group">
+              <span class="kbd-key" data-key="KeyW">W</span>
+              <span class="kbd-caption">Gas</span>
+            </div>
           </div>
-          <div class="kbd-group">
-            <span class="kbd-key" data-key="KeyS">S</span>
-            <span class="kbd-caption">Brake</span>
+          <div class="kbd-row kbd-row--mid">
+            <div class="kbd-group">
+              <span class="kbd-key" data-key="KeyA">A</span>
+              <span class="kbd-caption">Left</span>
+            </div>
+            <div class="kbd-group">
+              <span class="kbd-key" data-key="KeyS">S</span>
+              <span class="kbd-caption">Brake</span>
+            </div>
+            <div class="kbd-group">
+              <span class="kbd-key" data-key="KeyD">D</span>
+              <span class="kbd-caption">Right</span>
+            </div>
           </div>
-          <div class="kbd-group">
-            <span class="kbd-key" data-key="KeyD">D</span>
-            <span class="kbd-caption">Right</span>
+          <div class="kbd-row kbd-row--wide">
+            <div class="kbd-group">
+              <span class="kbd-key kbd-key--wide" data-key="Space">SPACE</span>
+              <span class="kbd-caption">Handbrake</span>
+            </div>
           </div>
+          <p class="kbd-note">
+            <b>Clutch</b> and <b>H-shifter</b> need a wheel, a calibrated
+            controller, or touch controls.
+          </p>
         </div>
-        <div class="kbd-row kbd-row--wide">
-          <div class="kbd-group">
-            <span class="kbd-key kbd-key--wide" data-key="Space">SPACE</span>
-            <span class="kbd-caption">Handbrake</span>
-          </div>
-          <div class="kbd-group">
-            <span class="kbd-key kbd-key--wide" data-key="ShiftLeft" data-key-alt="ShiftRight">SHIFT</span>
-            <span class="kbd-caption">Turbo</span>
-          </div>
-        </div>
+
         <div class="kbd-row kbd-row--mini">
           <div class="kbd-mini"><span class="kbd-key kbd-key--mini">R</span>Reset</div>
           <div class="kbd-mini"><span class="kbd-key kbd-key--mini">F</span>Turret</div>
+          <div class="kbd-mini"><span class="kbd-key kbd-key--mini">E</span>Pick up</div>
+          <div class="kbd-mini"><span class="kbd-key kbd-key--mini">I</span>Bag</div>
+          <div class="kbd-mini"><span class="kbd-key kbd-key--mini">M</span>Map</div>
           <div class="kbd-mini"><span class="kbd-key kbd-key--mini">C</span>Camera</div>
           <div class="kbd-mini"><span class="kbd-key kbd-key--mini">Esc</span>Menu</div>
-          <div class="kbd-mini"><span class="kbd-key kbd-key--mini">&crarr;</span>Chat</div>
         </div>
       </div>
     </section>
@@ -346,6 +403,34 @@
     >
       <span id="hud-mode-toggle-label">HUD: DEFAULT</span>
     </button>
+
+    <div id="objective-strip" hidden>
+      <span class="objective-kicker">OBJECTIVE</span>
+      <span class="objective-text" id="objective-text"></span>
+    </div>
+
+    <div id="minimap-panel" hidden>
+      <canvas id="minimap-canvas"></canvas>
+      <div class="minimap-legend">
+        <span class="minimap-key minimap-key--poi">POI</span>
+        <span class="minimap-key minimap-key--enemy">HOSTILE</span>
+        <span class="minimap-key minimap-key--charge">CHARGE</span>
+      </div>
+    </div>
+
+    <div id="interaction-prompt" hidden>
+      <span id="interaction-key">E</span>
+      <span id="interaction-label">PICK UP</span>
+    </div>
+
+    <aside id="inventory-panel" hidden aria-label="Inventory">
+      <div class="inv-head">
+        <span class="inv-title">CARGO</span>
+        <button id="inventory-close" type="button" aria-label="Close inventory">×</button>
+      </div>
+      <ul id="inventory-list"></ul>
+      <p id="inventory-empty">No salvage yet. Destroy hostiles at points of interest to find supplies.</p>
+    </aside>
 
     <div id="game-notice" hidden></div>
 
