@@ -275,6 +275,7 @@
           <strong id="delivery-count" class="dash-pill dash-pill-score">Deliveries: 0 · Score: 0</strong>
           <div id="turret-status" class="dash-pill dash-pill-turret">TURRET: OFFLINE</div>
           <div id="turbo-status" class="dash-pill dash-pill-turbo">TURBO: READY</div>
+          <div id="auto-loot-status" class="dash-pill dash-pill-autoloot" role="status" aria-live="polite" aria-label="Auto loot off">AUTO LOOT: OFF</div>
           <div id="battery-status" class="dash-pill dash-pill-battery">BATTERY: 100%</div>
         </div>
 
@@ -363,8 +364,8 @@
 
         <div class="kbd-row kbd-row--mini">
           <div class="kbd-mini"><span class="kbd-key kbd-key--mini">R</span>Reset</div>
-          <div class="kbd-mini"><span class="kbd-key kbd-key--mini">F</span>Turret</div>
-          <div class="kbd-mini"><span class="kbd-key kbd-key--mini">E</span>Pick up</div>
+          <div class="kbd-mini"><span class="kbd-key kbd-key--mini" data-key="KeyT">T</span>Turret</div>
+          <div class="kbd-mini"><span class="kbd-key kbd-key--mini" data-key="KeyF">F</span>Auto loot</div>
           <div class="kbd-mini"><span class="kbd-key kbd-key--mini">I</span>Bag</div>
           <div class="kbd-mini"><span class="kbd-key kbd-key--mini">M</span>Map</div>
           <div class="kbd-mini"><span class="kbd-key kbd-key--mini">C</span>Camera</div>
@@ -419,7 +420,7 @@
     </div>
 
     <div id="interaction-prompt" hidden>
-      <span id="interaction-key">E</span>
+      <span id="interaction-key">F</span>
       <span id="interaction-label">PICK UP</span>
     </div>
 
