@@ -18,6 +18,15 @@ canvas {
   height: 100vh;
 }
 
+/* The gameplay canvas owns its own gestures: one-finger drag orbits the
+   third-person camera and double tap centers it (see CameraManager). Both
+   need the browser to keep its hands off panning and double-tap zoom.
+   Scoped to #game so the minimap canvas and the rest of the page are
+   untouched. */
+#game {
+  touch-action: none;
+}
+
 #loading {
   position: fixed;
   inset: 0;
@@ -751,6 +760,19 @@ button:disabled {
 
 .dash-pill-turbo--cooldown {
   color: #8a94a3;
+}
+
+/* Same metrics as the turret/turbo pills so the status row stays even.
+   Colour tokens live with the other pills in ui/theme.css. */
+.dash-pill-autoloot {
+  color: #b39dff;
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+  transition: color 0.15s ease;
+}
+
+.dash-pill-autoloot--active {
+  font-weight: 700;
 }
 
 #hud #start-engine {

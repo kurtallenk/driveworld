@@ -1,5 +1,10 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
+import {
+  GROUND_LAYER_OVERLAY,
+  groundLayerHeight,
+  placeGroundDecal
+} from "./GroundLayers.js";
 
 // ---------------------------------------------------------------------------
 // Safe-zone charging station.
@@ -66,7 +71,11 @@ export function createChargingStation(
   );
 
   zoneMesh.rotation.x = -Math.PI / 2;
-  zoneMesh.position.y = 0.045;
+
+  // The zone sits on the shared overlay layer so it is drawn on top of any
+  // road ribbon that runs through the forecourt instead of fighting it for
+  // the depth buffer. See GroundLayers.js.
+  placeGroundDecal(zoneMesh, GROUND_LAYER_OVERLAY);
   zoneMesh.receiveShadow = true;
   group.add(zoneMesh);
 
@@ -84,7 +93,9 @@ export function createChargingStation(
   );
 
   zoneRing.rotation.x = -Math.PI / 2;
-  zoneRing.position.y = 0.05;
+  placeGroundDecal(zoneRing, GROUND_LAYER_OVERLAY, {
+    y: groundLayerHeight(GROUND_LAYER_OVERLAY) + 0.002
+  });
   group.add(zoneRing);
 
   // ---- Charger station prop ----------------------------------------------

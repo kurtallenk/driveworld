@@ -1,7 +1,17 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
 
-import { POI_SITES } from "./WorldGeometry.js";
+import {
+  groundLayerHeight,
+  placeGroundDecal,
+  GROUND_LAYER
+} from "./GroundLayers.js";
+import {
+  POI_SITES,
+  TOWN_CENTER,
+  TOWN_ENTRANCE,
+  TOWN_PLATEAU_RADIUS
+} from "./WorldGeometry.js";
 
 // ---------------------------------------------------------------------------
 // POINT OF INTEREST SYSTEM
@@ -30,7 +40,9 @@ const KIND_STYLE = {
   repair: { primary: 0x5b6b62, accent: 0x4bb98a },
   checkpoint: { primary: 0x6b6357, accent: 0xc2a23f },
   industrial: { primary: 0x656b74, accent: 0x9a5a34 },
-  rest: { primary: 0x66705f, accent: 0x7fa05a }
+  rest: { primary: 0x66705f, accent: 0x7fa05a },
+  // Hilltop community: warmer, more "lived in" than the derelict sites.
+  town: { primary: 0x7a7266, accent: 0xc98a3c }
 };
 
 export function createPOIs(scene, physics, terrain) {
@@ -101,7 +113,15 @@ export function createPOIs(scene, physics, terrain) {
 
     const mesh = new THREE.Mesh(geometry, material(0x4a4740, 1));
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(site.x, terrain.heightAt(site.x, site.z) + 0.03, site.z);
+    mesh.position.set(site.x, 0, site.z);
+
+    // The lowest ground decal: roads and their markings are drawn over the
+    // apron instead of z-fighting with it (see GroundLayers.js).
+    placeGroundDecal(mesh, GROUND_LAYER.poiApron, {
+      y: terrain.heightAt(site.x, site.z) +
+        groundLayerHeight(GROUND_LAYER.poiApron)
+    });
+
     mesh.receiveShadow = true;
 
     group.add(mesh);
@@ -218,6 +238,178 @@ export function createPOIs(scene, physics, terrain) {
 
         prop([3, 0.4, 1], [site.x, ground + 0.9, site.z], style.accent);
         prop([0.4, 3, 0.4], [site.x + 8, ground + 1.5, site.z - 4], style.accent);
+        break;
+      }
+
+      case "town": {
+        // ---------------------------------------------------------------
+        // RIDGEVIEW MOTOR TOWN
+        //
+        // The environmental FOUNDATION of a car community, not a finished
+        // service hub: an enclosed lot with one readable entrance, a
+        // bulletin board, an internal street (drawn by Roads.js from the
+        // shared route table) and marked-out, deliberately empty plots for
+        // the service/shop/meeting buildings those systems will need when
+        // they exist.
+        //
+        // Every prop is placed against terrain.heightAt(), so it sits on
+        // the plateau rather than at world zero, and the perimeter is
+        // walked as an arc with a gap at the entrance -- the gap is never
+        // filled, so the single way in can never be blocked by scenery.
+        // ---------------------------------------------------------------
+        const radius = TOWN_PLATEAU_RADIUS - 2;
+
+        // Entrance bearing, measured from the plateau centre.
+        const entranceAngle = Math.atan2(
+          TOWN_ENTRANCE.z - TOWN_CENTER.z,
+          TOWN_ENTRANCE.x - TOWN_CENTER.x
+        );
+
+        // +1 when the town extends toward +z from the gate, -1 otherwise.
+        // Every offset below is expressed as "distance inward from the
+        // gate", so the layout follows the entrance instead of hardcoding
+        // a compass direction.
+        const inward = Math.sign(TOWN_CENTER.z - TOWN_ENTRANCE.z) || 1;
+
+        // Half-width of the gap left in the perimeter, in radians.
+        const gateGap = 0.34;
+
+        const heightOn = (x, z) => terrain.heightAt(x, z);
+        const at = (dx, dz) => [site.x + dx, site.z + dz * inward];
+
+        // --- PERIMETER ------------------------------------------------
+        // Fence posts + panels all the way round except the gate opening.
+        const segments = 56;
+
+        for (let i = 0; i < segments; i++) {
+          const angle = (i / segments) * Math.PI * 2;
+
+          let offset = angle - entranceAngle;
+          offset = Math.atan2(Math.sin(offset), Math.cos(offset));
+
+          if (Math.abs(offset) < gateGap) continue;
+
+          const px = site.x + Math.cos(angle) * radius;
+          const pz = site.z + Math.sin(angle) * radius;
+          const base = heightOn(px, pz);
+
+          // Low wall on the approach side, open fence elsewhere: the solid
+          // stretch faces the ramp so the town reads as enclosed as you
+          // drive up to it.
+          const solidWall = Math.abs(offset) < 1.1;
+
+          prop(
+            solidWall ? [3.2, 2.2, 0.5] : [3.2, 1.5, 0.35],
+            [px, base + (solidWall ? 1.1 : 0.75), pz],
+            solidWall ? style.primary : 0x6a6257,
+            { rotation: angle + Math.PI / 2 }
+          );
+        }
+
+        // --- GATE -----------------------------------------------------
+        // Two pillars and a sign beam across the top: unmistakable, and
+        // set wider than the carriageway so nothing narrows the opening.
+        const gateX = TOWN_ENTRANCE.x;
+        const gateZ = TOWN_ENTRANCE.z;
+        const gateBase = heightOn(gateX, gateZ);
+
+        for (const dx of [-7.5, 7.5]) {
+          prop([1.6, 6, 1.6], [gateX + dx, gateBase + 3, gateZ], style.primary);
+        }
+
+        prop([17, 1.6, 0.8], [gateX, gateBase + 6.6, gateZ], style.accent);
+
+        // --- BULLETIN BOARD -------------------------------------------
+        // Just inside the gate and off the carriageway, where a driver
+        // actually stops.
+        const [boardX, boardZ] = [gateX + 11, gateZ + 7 * inward];
+        const boardBase = heightOn(boardX, boardZ);
+
+        for (const dx of [-1.7, 1.7]) {
+          prop([0.35, 2.4, 0.35], [boardX + dx, boardBase + 1.2, boardZ], 0x6a6257);
+        }
+
+        prop([4.4, 2.6, 0.3], [boardX, boardBase + 3.1, boardZ], style.accent);
+        prop([4.8, 0.4, 1.1], [boardX, boardBase + 4.5, boardZ], style.primary);
+
+        // --- FUTURE PLOTS ---------------------------------------------
+        // Marked-out, deliberately low foundations either side of the
+        // internal street. These are the spaces the service bay, the shop
+        // and the community meeting area will occupy once those systems
+        // exist -- pads and a name post, not buildings, so nothing has to
+        // be torn down later. All of them (kerbs and posts included) are
+        // inside the fence ring by construction.
+        const plots = [
+          { dx: -15, dz: 2, w: 13, d: 12, label: 0x4bb98a }, // service/repair
+          { dx: 15, dz: 2, w: 13, d: 12, label: 0xc2a23f },  // shop
+          { dx: 0, dz: 16, w: 18, d: 10, label: 0x8fb4d8 }   // car-community meet
+        ];
+
+        for (const plot of plots) {
+          const [px, pz] = at(plot.dx, plot.dz);
+          const base = heightOn(px, pz);
+
+          // Flat pad the car can drive straight onto. This one IS solid:
+          // it is a raised concrete foundation, so it needs a collision
+          // body or the car sinks through it and drives at terrain height
+          // with its wheels buried in the slab. Kept low (12cm) so the
+          // step up reads as a kerb-height lip rather than a wall. prop()
+          // gives solid bodies the "asphalt" surface, so the tyre model
+          // behaves the same as it does on the rest of the town.
+          prop([plot.w, 0.12, plot.d], [px, base + 0.06, pz], 0x585449);
+
+          // Kerb stubs marking the plot corners without enclosing it.
+          const kerbZ = pz - (plot.d / 2 - 0.7) * inward;
+
+          for (const sx of [-1, 1]) {
+            prop(
+              [1.4, 0.5, 1.4],
+              [px + sx * (plot.w / 2 - 0.7), base + 0.25, kerbZ],
+              0x6a6257
+            );
+          }
+
+          // Name post on the street side, so the empty plot reads as
+          // reserved rather than forgotten.
+          const postZ = pz - (plot.d / 2 + 1.4) * inward;
+
+          prop([0.3, 2.2, 0.3], [px, heightOn(px, postZ) + 1.1, postZ], 0x6a6257);
+          prop([2.4, 0.9, 0.2], [px, heightOn(px, postZ) + 2.4, postZ], plot.label);
+        }
+
+        // --- PARKING ----------------------------------------------------
+        // Bay markings along the cross street, painted on (non-solid) so
+        // they never stop a car.
+        for (let i = 0; i < 6; i++) {
+          const [px, pz] = at(-13 + i * 5.2, 12);
+
+          // Painted on, so they sit flush with the surface rather than
+          // floating a few centimetres above it where the car visibly
+          // passes through them.
+          prop([0.25, 0.04, 5], [px, heightOn(px, pz) + 0.02, pz], 0xd8d2c4, {
+            solid: false
+          });
+        }
+
+        // --- STREET FURNITURE -------------------------------------------
+        // Lamp posts and benches, so the lot feels inhabited rather than
+        // like an empty platform.
+        for (const [dx, dz] of [[-12, -14], [12, -14], [-17, 13], [17, 13]]) {
+          const [px, pz] = at(dx, dz);
+          const base = heightOn(px, pz);
+
+          prop([0.3, 4.2, 0.3], [px, base + 2.1, pz], 0x6a6257);
+          prop([1.2, 0.35, 1.2], [px, base + 4.3, pz], style.accent);
+        }
+
+        for (const dx of [-11, 11]) {
+          const [px, pz] = at(dx, 9);
+          const base = heightOn(px, pz);
+
+          prop([2.6, 0.35, 0.8], [px, base + 0.55, pz], 0x7a6a4f);
+          prop([2.6, 0.9, 0.2], [px, base + 1.05, pz - 0.3 * inward], 0x7a6a4f);
+        }
+
         break;
       }
 

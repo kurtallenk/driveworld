@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
-import { hillHeight, WORLD_SIZE } from "./WorldGeometry.js";
+import { heightAt as worldHeightAt, WORLD_SIZE } from "./WorldGeometry.js";
 
 export function createTerrain(scene, physics) {
   const size = WORLD_SIZE;
@@ -10,16 +10,19 @@ export function createTerrain(scene, physics) {
 
   const data = [];
 
-  // hillHeight() lives in WorldGeometry.js -- shared with the server (see
+  // heightAt() lives in WorldGeometry.js -- shared with the server (see
   // that file's header comment) so authoritative enemy spawn placement
-  // samples the exact same terrain every client renders.
+  // samples the exact same terrain every client renders. It is the natural
+  // hills PLUS the elevated town plateau/ramp, so the raised community is
+  // real ground: the heightfield collider, the visible mesh, prop
+  // placement and the server all come from this one function.
   for (let i = 0; i <= divisions; i++) {
     data[i] = [];
 
     for (let j = 0; j <= divisions; j++) {
       const x = -half + i * step;
       const z = half - j * step;
-      data[i][j] = hillHeight(x, z);
+      data[i][j] = worldHeightAt(x, z);
     }
   }
 

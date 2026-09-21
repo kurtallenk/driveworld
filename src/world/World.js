@@ -1,3 +1,4 @@
+import { isInsideTown } from "./WorldGeometry.js";
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
 
@@ -97,6 +98,11 @@ export function createWorld(scene, physics) {
     const z = (random() - 0.5) * 380;
 
     if (Math.abs(x) < 26) continue;
+
+    // The hilltop town is a built-up lot, not woodland -- and a tree in
+    // the middle of its street or parking pads would block it.
+    if (isInsideTown(x, z, 4)) continue;
+
     if (roads.surfaceAt(x, z) !== "grass") continue;
 
     // Keep trunks and foliage away from road edges.

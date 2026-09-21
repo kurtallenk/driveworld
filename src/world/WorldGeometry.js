@@ -41,8 +41,192 @@ export function hillHeight(x, z) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// HILLTOP MOTOR TOWN — elevated community plateau + its access ramp
+// ---------------------------------------------------------------------------
+// Declared here, with the rest of the shared world maths, for exactly the
+// reason given in this file's header: the plateau changes the ground height
+// and the ramp is a real carriageway, so the authoritative server has to
+// agree with the client about both or enemies/loot would spawn inside the
+// hillside and the road would be a visual-only ramp the server cannot
+// classify.
+//
+// Shape:
+//   * a flat top of radius TOWN_PLATEAU_RADIUS at TOWN_HEIGHT,
+//   * a steep, deliberately un-drivable embankment out to TOWN_SKIRT_RADIUS,
+//     which is what makes the community feel enclosed,
+//   * ONE drivable way up: the ramp polyline below, which leaves the
+//     existing crossSouth carriageway and climbs to the entrance.
+//
+// The ramp's height profile is a smoothstep, so its gradient is zero where
+// it meets both the flat ground and the plateau: no kink at either end that
+// could launch or destabilise a vehicle.
+// ---------------------------------------------------------------------------
+
+export const TOWN_CENTER = { x: -82, z: 40 };
+export const TOWN_HEIGHT = 5;
+export const TOWN_PLATEAU_RADIUS = 26;
+export const TOWN_SKIRT_RADIUS = 36;
+
+// Where the ramp meets the plateau rim (the single entrance) and where it
+// meets the existing road network.
+export const TOWN_ENTRANCE = { x: -82, z: 66 };
+export const TOWN_ACCESS = { x: -16, z: 100 };
+
+export const TOWN_RAMP_WIDTH = 12;
+
+// The ramp polyline finishes 8m inside the rim, on the town side of the
+// entrance, so the ramp and plateau surfaces overlap.
+const TOWN_RAMP_OVERRUN_Z =
+  TOWN_ENTRANCE.z + Math.sign(TOWN_CENTER.z - TOWN_ENTRANCE.z) * 8;
+const TOWN_RAMP_SKIRT = 10;
+
+// The climb starts and finishes slightly inside the polyline so the ramp
+// has flat aprons at the bottom junction and at the gate.
+const TOWN_RAMP_CLIMB_START = 0.06;
+// Finishes BEFORE the polyline reaches the plateau rim, so the ramp is
+// already level at TOWN_HEIGHT when the plateau term takes over. Without
+// that overlap the max() below would hand over mid-climb and leave a slope
+// kink right at the gate.
+const TOWN_RAMP_CLIMB_END = 0.84;
+
+// S-curve from the crossSouth carriageway up to the entrance. Sampled (not
+// hand-listed) so the visual mesh, the surface classifier and the elevation
+// all read the exact same curve.
+// Where along the polyline the ramp crosses the plateau rim.
+const TOWN_RAMP_RIM_T =
+  (TOWN_ENTRANCE.z - TOWN_ACCESS.z) / (TOWN_RAMP_OVERRUN_Z - TOWN_ACCESS.z);
+
+export function buildTownRampPoints(steps = 40) {
+  const points = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+
+    points.push({
+      // Eased in x, linear in z: a smooth S rather than a diagonal with
+      // two sharp junction kinks.
+      //
+      // The easing completes exactly at the rim (tRim) so the ramp passes
+      // through TOWN_ENTRANCE and then runs straight in, square to the
+      // boundary. smoothstep ends with zero gradient, so squaring up adds
+      // no kink.
+      x: TOWN_ACCESS.x +
+        (TOWN_ENTRANCE.x - TOWN_ACCESS.x) *
+        smoothstep(Math.min(t / TOWN_RAMP_RIM_T, 1), 0, 1),
+      // Runs 8m past the rim, INWARD, so the ramp and the plateau overlap
+      // instead of meeting at a seam.
+      z: TOWN_ACCESS.z + (TOWN_RAMP_OVERRUN_Z - TOWN_ACCESS.z) * t
+    });
+  }
+
+  return points;
+}
+
+// Sampled finely for the elevation lookup: the chord error of a coarse
+// polyline would show up as small lateral wobble in the ground height.
+const TOWN_RAMP_POINTS = buildTownRampPoints(240);
+
+// Cumulative arc length, so the climb below is driven by DISTANCE ALONG THE
+// ROAD rather than by the polyline index. The curve is eased in x, so its
+// index parameter advances at a very uneven speed; profiling the climb
+// against the index would pack most of the height gain into the slow
+// sections and produce a needlessly steep stretch near the bottom.
+const TOWN_RAMP_ARC = (() => {
+  const lengths = [0];
+
+  for (let i = 1; i < TOWN_RAMP_POINTS.length; i++) {
+    const a = TOWN_RAMP_POINTS[i - 1];
+    const b = TOWN_RAMP_POINTS[i];
+
+    lengths.push(lengths[i - 1] + Math.hypot(b.x - a.x, b.z - a.z));
+  }
+
+  return lengths;
+})();
+
+export const TOWN_RAMP_LENGTH = TOWN_RAMP_ARC[TOWN_RAMP_ARC.length - 1];
+
+// Nearest point on the ramp polyline: returns the perpendicular distance
+// and the normalized arc length (0..1) of that nearest point.
+function nearestOnTownRamp(x, z) {
+  let bestDistance = Infinity;
+  let bestS = 0;
+
+  for (let i = 0; i < TOWN_RAMP_POINTS.length - 1; i++) {
+    const a = TOWN_RAMP_POINTS[i];
+    const b = TOWN_RAMP_POINTS[i + 1];
+
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const lengthSquared = dx * dx + dz * dz;
+
+    const local = lengthSquared === 0 ? 0 : clamp(
+      ((x - a.x) * dx + (z - a.z) * dz) / lengthSquared,
+      0,
+      1
+    );
+
+    const distance = Math.hypot(
+      x - (a.x + local * dx),
+      z - (a.z + local * dz)
+    );
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestS = (
+        TOWN_RAMP_ARC[i] +
+        (TOWN_RAMP_ARC[i + 1] - TOWN_RAMP_ARC[i]) * local
+      ) / TOWN_RAMP_LENGTH;
+    }
+  }
+
+  return { distance: bestDistance, t: bestS };
+}
+
+export function townPlateauHeight(x, z) {
+  const distance = Math.hypot(x - TOWN_CENTER.x, z - TOWN_CENTER.z);
+
+  return TOWN_HEIGHT * (
+    1 - smoothstep(distance, TOWN_PLATEAU_RADIUS, TOWN_SKIRT_RADIUS)
+  );
+}
+
+export function townRampHeight(x, z) {
+  const { distance, t } = nearestOnTownRamp(x, z);
+
+  const lateral = 1 - smoothstep(
+    distance,
+    TOWN_RAMP_WIDTH / 2,
+    TOWN_RAMP_WIDTH / 2 + TOWN_RAMP_SKIRT
+  );
+
+  if (lateral <= 0) return 0;
+
+  const climb = smoothstep(t, TOWN_RAMP_CLIMB_START, TOWN_RAMP_CLIMB_END);
+
+  return TOWN_HEIGHT * climb * lateral;
+}
+
+// The ramp and the plateau are combined with max() rather than added: they
+// both reach TOWN_HEIGHT where they meet, so the join is continuous and
+// neither can push the other above the flat top.
+export function townElevation(x, z) {
+  return Math.max(townPlateauHeight(x, z), townRampHeight(x, z));
+}
+
+export function isInsideTown(x, z, padding = 0) {
+  return (
+    Math.hypot(x - TOWN_CENTER.x, z - TOWN_CENTER.z) <=
+    TOWN_PLATEAU_RADIUS + padding
+  );
+}
+
+// The one ground-height function. Terrain.js samples this into the
+// heightfield/mesh and the server samples it directly, so the elevated
+// town exists identically for physics, rendering and authority.
 export function heightAt(x, z) {
-  return hillHeight(x, z);
+  return hillHeight(x, z) + townElevation(x, z);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +329,24 @@ export const POI_SITES = [
     hostile: true,
     // Inside the neighbourhood ring road, reached from its western arc.
     access: { x: 120, z: 35 }
+  },
+  {
+    id: "hilltop-town",
+    name: "RIDGEVIEW MOTOR TOWN",
+    kind: "town",
+    x: -82,
+    z: 40,
+    radius: 26,
+    level: 1,
+    enemySlots: 0,
+    // A community, not an encounter: never used as an enemy anchor.
+    hostile: false,
+    // Sits on the elevated plateau (see townElevation above).
+    elevated: true,
+    // Deliberately NO `access` field: the generic 5m dirt spur generated
+    // for the sites above would ignore the hillside. This town is reached
+    // by its own purpose-built ramp carriageway, added in buildRoadRoutes.
+    entrance: { x: -82, z: 66 }
   },
   {
     id: "rest-area",
@@ -254,6 +456,61 @@ export function buildRoadRoutes() {
     });
   }
   routes.push({ points: eastLink, width: 7, surface: "asphalt", color: 0x3a424a });
+
+  // -------------------------------------------------------------------------
+  // HILLTOP MOTOR TOWN
+  // -------------------------------------------------------------------------
+  // The ramp is a first-class carriageway, not a visual prop: it is in this
+  // table, so Roads.js draws it, surfaceAt() below classifies it as asphalt
+  // and the server sees the same drivable surface. Its points come from
+  // buildTownRampPoints(), the same curve townRampHeight() raises the
+  // terrain along, so the mesh and the ground can never disagree.
+  routes.push({
+    points: buildTownRampPoints(),
+    width: TOWN_RAMP_WIDTH,
+    surface: "asphalt",
+    color: 0x3d4148
+  });
+
+  // Arrival apron just inside the gate, wide enough to turn around in
+  // before committing to the internal street.
+  const townArrival = [];
+  for (let i = 0; i <= 20; i++) {
+    const angle = -Math.PI / 2 + (i / 20) * Math.PI * 2;
+    townArrival.push({
+      x: TOWN_CENTER.x + Math.cos(angle) * 13,
+      z: TOWN_CENTER.z + 8 + Math.sin(angle) * 9
+    });
+  }
+  routes.push({
+    points: townArrival, width: 9, surface: "asphalt", color: 0x3f444b
+  });
+
+  // Central internal street, gate to the far side of the plateau.
+  const townMain = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    townMain.push({
+      x: TOWN_CENTER.x,
+      z: TOWN_ENTRANCE.z - 2 - t * 32
+    });
+  }
+  routes.push({
+    points: townMain, width: 8, surface: "asphalt", color: 0x3f444b
+  });
+
+  // Cross street serving the service/shop/meeting plots either side.
+  const townCross = [];
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
+    townCross.push({
+      x: TOWN_CENTER.x - 19 + t * 38,
+      z: TOWN_CENTER.z - 4
+    });
+  }
+  routes.push({
+    points: townCross, width: 7, surface: "asphalt", color: 0x3f444b
+  });
 
   // -------------------------------------------------------------------------
   // POI ACCESS SPURS

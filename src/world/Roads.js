@@ -1,12 +1,24 @@
 import * as THREE from "three";
 import { buildRoadRoutes, surfaceAt as classifySurfaceAt } from "./WorldGeometry.js";
+import {
+  applyGroundDecalDepth,
+  groundLayerHeight,
+  markingLayer,
+  placeGroundDecal,
+  GROUND_LAYER
+} from "./GroundLayers.js";
 
 export function createRoads(scene, terrain) {
   const routes = [];
 
-  function addRoute(points, width, surface, color) {
+  // `layer` is the route's index in the shared route table. Every crossing
+  // is two coplanar ribbons, so without a per-route depth bias the GPU
+  // z-fights at every junction -- see GroundLayers.js.
+  function addRoute(points, width, surface, color, layer) {
     const route = { points, width, surface };
     routes.push(route);
+
+    const lift = groundLayerHeight(layer);
 
     const vertices = [];
     const indices = [];
@@ -26,7 +38,7 @@ export function createRoads(scene, terrain) {
         const x = point.x + nx * width * 0.5 * side;
         const z = point.z + nz * width * 0.5 * side;
 
-        vertices.push(x, terrain.heightAt(x, z) + 0.035, z);
+        vertices.push(x, terrain.heightAt(x, z) + lift, z);
       }
 
       if (index < points.length - 1) {
@@ -45,22 +57,37 @@ export function createRoads(scene, terrain) {
 
     const mesh = new THREE.Mesh(
       geometry,
-      new THREE.MeshStandardMaterial({
-        color,
-        roughness: 1,
-        side: THREE.DoubleSide
-      })
+      applyGroundDecalDepth(
+        new THREE.MeshStandardMaterial({
+          color,
+          roughness: 1,
+          side: THREE.DoubleSide
+        }),
+        layer
+      )
     );
 
+    // Stable draw order to match the depth bias. Later routes are the ones
+    // surfaceAt() also treats as winning the overlap, so what you see at a
+    // junction is what the physics and the server classify.
+    mesh.renderOrder = layer;
     mesh.receiveShadow = true;
     scene.add(mesh);
   }
 
   // Route point generation itself lives in WorldGeometry.js (shared with
   // the server -- see that file's header comment); this just draws them.
-  for (const route of buildRoadRoutes()) {
-    addRoute(route.points, route.width, route.surface, route.color);
-  }
+  const routeTable = buildRoadRoutes();
+
+  routeTable.forEach((route, index) => {
+    addRoute(
+      route.points,
+      route.width,
+      route.surface,
+      route.color,
+      GROUND_LAYER.roadBase + index
+    );
+  });
 
   // Flat test pad covering the existing spawn location.
   const pad = new THREE.Mesh(
@@ -72,9 +99,19 @@ export function createRoads(scene, terrain) {
   );
 
   pad.rotation.x = -Math.PI / 2;
-  pad.position.set(0, 0.04, -65);
+  pad.position.set(0, 0, -65);
+
+  // Underneath the road network: the spine and the spawn spur are drawn
+  // over it rather than fighting it.
+  placeGroundDecal(pad, GROUND_LAYER.spawnPad);
+
   pad.receiveShadow = true;
   scene.add(pad);
+
+  // Lane markings must sit above EVERY road ribbon, including any route
+  // added later, so they use the shared marking layer rather than a
+  // hand-picked height.
+  const markings = markingLayer(routeTable.length);
 
   for (let z = -85; z <= 85; z += 10) {
     const stripe = new THREE.Mesh(
@@ -83,7 +120,10 @@ export function createRoads(scene, terrain) {
     );
 
     stripe.rotation.x = -Math.PI / 2;
-    stripe.position.set(0, 0.06, z);
+    stripe.position.set(0, 0, z);
+
+    placeGroundDecal(stripe, markings);
+
     scene.add(stripe);
   }
 
@@ -94,5 +134,5 @@ export function createRoads(scene, terrain) {
   // actually drawn here.
   terrain.body.surfaceAt = point => classifySurfaceAt(point.x, point.z);
 
-  return { surfaceAt: classifySurfaceAt };
+  return { surfaceAt: classifySurfaceAt, routeCount: routeTable.length };
 }
