@@ -47,6 +47,8 @@ export class ChatPanel {
     this.client = multiplayerClient;
     this.messageCount = 0;
     this.sending = false;
+    this.keyboardViewportCleanup = null;
+    this.keyboardViewportFrame = null;
 
     const prefs = loadPrefs();
     this.size = prefs.size;
@@ -57,6 +59,7 @@ export class ChatPanel {
 
     this.applySize();
     this.applyVisibility({ animate: false });
+    this.setupMobileKeyboardHandling();
   }
 
   buildUI() {
@@ -234,6 +237,85 @@ export class ChatPanel {
     this.scrollToBottom();
   }
 
+  setupMobileKeyboardHandling() {
+    // Mobile browsers resize/reposition the visual viewport when the
+    // software keyboard opens. The game uses a fixed touch layout, so do not
+    // let the browser move/clip the chat panel out of view. While the input
+    // is focused, dock the panel just above the keyboard using the visual
+    // viewport occlusion amount.
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const isMobileLayout = () =>
+      document.body.classList.contains("mobile-controls-active");
+
+    const update = () => {
+      this.keyboardViewportFrame = null;
+      if (!isMobileLayout() || document.activeElement !== this.input) return;
+
+      const layoutHeight =
+        document.documentElement.clientHeight || window.innerHeight || 0;
+      const visualHeight = vv.height || layoutHeight;
+      const visualTop = vv.offsetTop || 0;
+      const keyboardOcclusion = Math.max(
+        0,
+        layoutHeight - (visualHeight + visualTop)
+      );
+
+      this.panel.classList.add("chat-keyboard-open");
+      this.panel.style.setProperty(
+        "--chat-keyboard-bottom",
+        `${keyboardOcclusion + 8}px`
+      );
+
+      // Ask the browser to reveal the actual input after the keyboard has
+      // finished its animation. This is especially important on iOS Safari.
+      requestAnimationFrame(() => {
+        if (document.activeElement === this.input) {
+          this.input.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
+      });
+    };
+
+    const schedule = () => {
+      if (this.keyboardViewportFrame != null) return;
+      this.keyboardViewportFrame = requestAnimationFrame(update);
+    };
+
+    const open = () => {
+      if (!isMobileLayout()) return;
+      // Let the browser start opening the keyboard before measuring the
+      // visual viewport; then keep following its resize animation.
+      this.panel.classList.add("chat-keyboard-open");
+      schedule();
+      setTimeout(schedule, 80);
+      setTimeout(schedule, 220);
+    };
+
+    const close = () => {
+      this.panel.classList.remove("chat-keyboard-open");
+      this.panel.style.removeProperty("--chat-keyboard-bottom");
+    };
+
+    this.input.addEventListener("focus", open);
+    this.input.addEventListener("blur", close);
+    vv.addEventListener("resize", schedule);
+    vv.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+
+    this.keyboardViewportCleanup = () => {
+      this.input.removeEventListener("focus", open);
+      this.input.removeEventListener("blur", close);
+      vv.removeEventListener("resize", schedule);
+      vv.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      if (this.keyboardViewportFrame != null) {
+        cancelAnimationFrame(this.keyboardViewportFrame);
+        this.keyboardViewportFrame = null;
+      }
+    };
+  }
+
   focusInput() {
     this.input.focus();
   }
@@ -255,6 +337,8 @@ export class ChatPanel {
     }
 
     this.sending = false;
+    this.keyboardViewportCleanup = null;
+    this.keyboardViewportFrame = null;
   }
 
   appendEntry(node) {
@@ -300,6 +384,8 @@ export class ChatPanel {
   }
 
   dispose() {
+    this.keyboardViewportCleanup?.();
+    this.keyboardViewportCleanup = null;
     window.removeEventListener("keydown", this.enterKeyHandler);
     this.panel.remove();
     this.showButton.remove();

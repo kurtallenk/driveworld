@@ -2,6 +2,15 @@ import * as THREE from "three";
 
 import { ThirdPersonCamera } from "./ThirdPersonCamera.js";
 import { CameraObstacleAvoidance } from "./CameraObstacleAvoidance.js";
+import {
+  applyLookDelta,
+  approachAngle,
+  approachScalar,
+  isDoubleTap,
+  isTap,
+  wrapAngle,
+  TOUCH_DRAG_THRESHOLD
+} from "./CameraMath.js";
 
 const SEAT_STORAGE_KEY = "driveworld.prototype-car-seat.v1";
 
@@ -82,6 +91,18 @@ export class CameraManager {
     this.pointerId = null;
     this.lastPointerX = 0;
     this.lastPointerY = 0;
+
+    // Mobile one-finger look. Tracked separately from the mouse drag above
+    // so a stuck touch can never leave the mouse path dragging (and vice
+    // versa), and so only the FIRST finger on the canvas steers the camera.
+    this.touchPointerId = null;
+    this.touchMoved = 0;
+    this.touchStartX = 0;
+    this.touchStartY = 0;
+    this.touchStartTime = 0;
+    this.lastTouchX = 0;
+    this.lastTouchY = 0;
+    this.lastTap = null;
 
     this.seat = loadSeatPosition();
 
@@ -177,33 +198,7 @@ export class CameraManager {
       this.lastPointerX = event.clientX;
       this.lastPointerY = event.clientY;
 
-      const sensitivity = boundedNumber(
-        this.settings.lookSensitivity,
-        0.003,
-        0.001,
-        0.008
-      );
-
-      // Looking along chassis +Z:
-      // negative yaw looks toward the driver's right.
-      const rawYaw = this.targetYaw - deltaX * sensitivity;
-      const rawPitch = this.targetPitch + deltaY * sensitivity;
-
-      if (this.mode === "driver") {
-        this.targetYaw = THREE.MathUtils.clamp(rawYaw, -1.4, 1.4);
-        this.targetPitch = THREE.MathUtils.clamp(rawPitch, -0.55, 0.55);
-      } else {
-        // Third-person orbit: yaw can go all the way around the car
-        // (wrapped to keep the underlying number from growing forever
-        // across a long drag), pitch is limited so the camera can't flip
-        // over the roof or dip through the ground.
-        this.targetYaw = THREE.MathUtils.euclideanModulo(
-          rawYaw + Math.PI,
-          Math.PI * 2
-        ) - Math.PI;
-
-        this.targetPitch = THREE.MathUtils.clamp(rawPitch, -0.55, 0.75);
-      }
+      this.applyLook(deltaX, deltaY);
     });
 
     this.canvas.addEventListener("pointerup", event => {
@@ -228,7 +223,10 @@ export class CameraManager {
     // snap the view, so this only fires on a clean down+up with barely any
     // pointer movement in between, same idea as a UI button's click.
     this.canvas.addEventListener("pointerdown", event => {
-      if (event.button !== 0) return;
+      // Mouse only. A touch tap must NOT center the camera -- on mobile
+      // that is the double-tap gesture below, so a single tap (or the
+      // first tap of a drag) can never snap the view.
+      if (event.button !== 0 || event.pointerType === "touch") return;
 
       this.leftClickStartX = event.clientX;
       this.leftClickStartY = event.clientY;
@@ -237,6 +235,7 @@ export class CameraManager {
     this.canvas.addEventListener("pointerup", event => {
       if (
         event.button !== 0 ||
+        event.pointerType === "touch" ||
         this.leftClickStartX === undefined
       ) {
         return;
@@ -261,13 +260,174 @@ export class CameraManager {
       this.centerLook();
     });
 
+    // -----------------------------------------------------------------
+    // MOBILE: one-finger drag to orbit, double tap to center.
+    //
+    // Bound to the gameplay canvas only. #mobile-controls, the chat panel
+    // and the minimap are separate elements layered above it, so their
+    // touches never reach these handlers and no UI gesture is stolen.
+    //
+    // Only the first finger on the canvas is tracked; a second finger is
+    // ignored rather than fighting the first one for the camera.
+    // -----------------------------------------------------------------
+
+    this.canvas.addEventListener("pointerdown", event => {
+      if (event.pointerType !== "touch") return;
+      if (this.touchPointerId !== null) return;
+
+      this.touchPointerId = event.pointerId;
+      this.touchMoved = 0;
+      this.touchStartX = event.clientX;
+      this.touchStartY = event.clientY;
+      this.touchStartTime = event.timeStamp;
+      this.lastTouchX = event.clientX;
+      this.lastTouchY = event.clientY;
+
+      // Keeps the gesture on the canvas even if the finger slides over a
+      // control, and stops the browser turning it into a scroll/zoom.
+      this.canvas.setPointerCapture?.(event.pointerId);
+    });
+
+    this.canvas.addEventListener("pointermove", event => {
+      if (
+        event.pointerType !== "touch" ||
+        event.pointerId !== this.touchPointerId
+      ) {
+        return;
+      }
+
+      const deltaX = event.clientX - this.lastTouchX;
+      const deltaY = event.clientY - this.lastTouchY;
+
+      this.lastTouchX = event.clientX;
+      this.lastTouchY = event.clientY;
+
+      this.touchMoved = Math.max(
+        this.touchMoved,
+        Math.hypot(
+          event.clientX - this.touchStartX,
+          event.clientY - this.touchStartY
+        )
+      );
+
+      // Below the threshold the finger is still a candidate tap, so the
+      // camera must not creep.
+      if (this.touchMoved < TOUCH_DRAG_THRESHOLD) return;
+
+      if (event.cancelable) event.preventDefault();
+
+      this.applyLook(deltaX, deltaY);
+    });
+
+    const endTouch = (event, cancelled = false) => {
+      if (event.pointerId !== this.touchPointerId) return;
+
+      if (this.canvas.hasPointerCapture?.(event.pointerId)) {
+        this.canvas.releasePointerCapture(event.pointerId);
+      }
+
+      this.touchPointerId = null;
+
+      if (cancelled) {
+        this.lastTap = null;
+        return;
+      }
+
+      const gesture = {
+        moved: this.touchMoved,
+        duration: event.timeStamp - this.touchStartTime
+      };
+
+      if (!isTap(gesture)) {
+        // A drag is never the first half of a double tap.
+        this.lastTap = null;
+        return;
+      }
+
+      const tap = {
+        x: event.clientX,
+        y: event.clientY,
+        time: event.timeStamp
+      };
+
+      if (isDoubleTap(this.lastTap, tap)) {
+        // Reuses the existing centering entry point -- no second copy of
+        // camera state, and identical to the desktop click/double-click.
+        this.centerLook();
+        this.lastTap = null;
+        return;
+      }
+
+      this.lastTap = tap;
+    };
+
+    this.canvas.addEventListener("pointerup", event => {
+      if (event.pointerType !== "touch") return;
+      endTouch(event);
+    });
+
+    this.canvas.addEventListener("pointercancel", event => {
+      if (event.pointerType !== "touch") return;
+      endTouch(event, true);
+    });
+
+    this.canvas.addEventListener("lostpointercapture", event => {
+      if (event.pointerId === this.touchPointerId) {
+        this.touchPointerId = null;
+        this.lastTap = null;
+      }
+    });
+
     window.addEventListener("blur", () => {
       this.stopDragging();
+      this.clearTouchGesture();
     });
 
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) this.stopDragging();
+      if (document.hidden) {
+        this.stopDragging();
+        this.clearTouchGesture();
+      }
     });
+  }
+
+  // One place both the mouse right-drag and the touch drag turn pointer
+  // movement into a look target, so the two input paths cannot drift apart
+  // on direction, sensitivity or clamping. Respects the existing
+  // lookSensitivity setting.
+  applyLook(deltaX, deltaY) {
+    const next = applyLookDelta({
+      yaw: this.targetYaw,
+      pitch: this.targetPitch,
+      deltaX,
+      deltaY,
+      sensitivity: boundedNumber(
+        this.settings.lookSensitivity,
+        0.003,
+        0.001,
+        0.008
+      ),
+      mode: this.mode
+    });
+
+    this.targetYaw = next.yaw;
+    this.targetPitch = next.pitch;
+  }
+
+  // Drops any in-flight touch look/tap state. Called on blur, tab hide and
+  // pointer cancellation so a lifted-off-screen finger can never leave the
+  // camera stuck in a drag.
+  clearTouchGesture() {
+    if (
+      this.touchPointerId !== null &&
+      this.canvas.hasPointerCapture?.(this.touchPointerId)
+    ) {
+      this.canvas.releasePointerCapture(this.touchPointerId);
+    }
+
+    this.touchPointerId = null;
+    this.touchMoved = 0;
+    this.lastTap = null;
   }
 
   stopDragging() {
@@ -284,9 +444,16 @@ export class CameraManager {
     }
   }
 
+  // The ONE camera-centering entry point: desktop left click, desktop
+  // double-click, the "Look forward" settings button and the mobile
+  // double tap all call this rather than writing camera state themselves.
   centerLook() {
     this.targetYaw = 0;
     this.targetPitch = 0;
+
+    // Keeps the live angle on the same branch as the target so the
+    // approach below still takes the shortest arc home.
+    this.yaw = wrapAngle(this.yaw);
   }
 
   toggle() {
@@ -316,6 +483,7 @@ export class CameraManager {
 
   reset() {
     this.stopDragging();
+    this.clearTouchGesture();
 
     this.yaw = 0;
     this.pitch = 0;
@@ -495,11 +663,18 @@ export class CameraManager {
         -boundedNumber(this.settings.cameraDistance, 7.5, 4, 14)
       );
 
-      // Smooth the right-click-drag orbit toward its target, same
-      // exponential-approach shape used for driver-mode look-around below.
+      // Smooth the orbit toward its target, same exponential-approach
+      // shape used for driver-mode look-around below.
+      //
+      // Yaw MUST take the shortest arc. targetYaw is wrapped into
+      // [-PI, PI), so dragging past the front of the car crosses the
+      // +-PI seam; a plain linear approach would then travel the long way
+      // round, straight through yaw = 0 (directly behind the car). That
+      // was the "camera suddenly flies behind the car and comes forward
+      // again" snap. See CameraMath.approachAngle.
       const orbitBlend = 1 - Math.exp(-10 * dt);
-      this.yaw += (this.targetYaw - this.yaw) * orbitBlend;
-      this.pitch += (this.targetPitch - this.pitch) * orbitBlend;
+      this.yaw = approachAngle(this.yaw, this.targetYaw, orbitBlend);
+      this.pitch = approachScalar(this.pitch, this.targetPitch, orbitBlend);
 
       this.orbitEuler.set(this.pitch, this.yaw, 0);
       this.orbitQuaternion.setFromEuler(this.orbitEuler);
@@ -583,8 +758,10 @@ export class CameraManager {
 
     const lookBlend = 1 - Math.exp(-16 * dt);
 
-    this.yaw += (this.targetYaw - this.yaw) * lookBlend;
-    this.pitch += (this.targetPitch - this.pitch) * lookBlend;
+    // Driver yaw is clamped to +-1.4 rad, so this never crosses the seam;
+    // it uses the same helpers purely so there is one implementation.
+    this.yaw = approachAngle(this.yaw, this.targetYaw, lookBlend);
+    this.pitch = approachScalar(this.pitch, this.targetPitch, lookBlend);
 
     this.lookEuler.set(this.pitch, this.yaw, 0);
     this.lookRotation.setFromEuler(this.lookEuler);

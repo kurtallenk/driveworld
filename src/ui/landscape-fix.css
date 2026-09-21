@@ -465,6 +465,7 @@ body.mobile-controls-active[data-mc-orientation="landscape"] #chat-show {
 	right: var(--lf-er);
 	left: auto;
 	bottom: auto;
+	z-index: var(--z-chat-touch, 99);
 	min-width: max(2.75rem, calc(56 * var(--lf-u)));
 	height: var(--lf-bubble-h);
 	padding: 0 calc(12 * var(--lf-u));

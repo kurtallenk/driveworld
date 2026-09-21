@@ -391,6 +391,15 @@
 .dash-pill-turret  { color: #9fd8ff; border-color: #48b0ff2e; }
 .dash-pill-turbo   { color: #ffce9c; border-color: #ff9a3c2e; }
 .dash-pill-battery { color: #9fe9c6; border-color: #4be3a02e; }
+/* Auto Loot reuses the turret/turbo pill language: dim when off, and a
+   filled tinted state (not colour alone - the text itself changes to
+   ACTIVE) when the setting is on. */
+.dash-pill-autoloot { color: #c9b6ff; border-color: #9b7dff2e; }
+.dash-pill-autoloot--active {
+  color: #f2ecff;
+  border-color: #9b7dff;
+  background: #9b7dff22;
+}
 
 .dash-pill-turbo--active   { color: #fff1e0; border-color: #ff9a3c; background: #ff9a3c22; }
 .dash-pill-turbo--cooldown { color: var(--dw-text-mute); }

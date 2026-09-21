@@ -38,6 +38,7 @@ import { Minimap } from "../ui/Minimap.js";
 import { LootSystem } from "../gameplay/LootSystem.js";
 import { InventorySystem } from "../gameplay/InventorySystem.js";
 import { InteractionSystem } from "../gameplay/InteractionSystem.js";
+import { AutoLootController } from "../gameplay/AutoLoot.js";
 import { getItem } from "../gameplay/ItemDatabase.js";
 
 // Tachometer scale for the dashboard's RPM arc. Redline comes straight
@@ -176,6 +177,12 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     );
 
     this.turboStatusElement = document.querySelector("#turbo-status");
+
+    // Compact Auto Loot readout, a sibling of the turret/turbo pills in
+    // the existing .dash-secondary row (no floating overlay, no new
+    // stacking context, so it can neither cover nor be covered by the
+    // rest of the HUD).
+    this.autoLootStatusElement = document.querySelector("#auto-loot-status");
 
     // --- Battery / energy ------------------------------------------------
     // onStateChange is wired up further below, once both `this.turret`
@@ -752,17 +759,12 @@ if (controllerButton) {
 
     // Loot pickups are the first interactable provider; the system is
     // generic so charging stations or POI objects can register later.
+    // It shares nearestPickupCandidate() with Auto Loot so both always
+    // agree on which drop is eligible right now.
     this.interactions.register(position => {
-      const drop = this.loot.nearest(position);
+      const drop = this.nearestPickupCandidate(position);
 
-      // Re-validated every probe: a drop that has been collected (locally
-      // or by another player) or removed by the server can never be
-      // offered, so the prompt cannot go stale.
-      if (!drop || !this.loot.isAvailable(drop)) return null;
-
-      // A pickup this client has already asked the server for is not
-      // offered again while the request is in flight.
-      if (drop.pickupId && this.pendingPickups.has(drop.pickupId)) return null;
+      if (!drop) return null;
 
       return {
         label: drop.name,
@@ -773,6 +775,12 @@ if (controllerButton) {
         ),
         activate: () => this.collectDrop(drop)
       };
+    });
+
+    // Auto Loot state lives here so the F key, the mobile button and both
+    // status readouts read and write exactly one value.
+    this.autoLoot = new AutoLootController({
+      onChange: enabled => this.renderAutoLootState(enabled)
     });
 
     // pickupIds this client has requested and not yet heard back about.
@@ -872,7 +880,7 @@ if (controllerButton) {
     this.mobileControls = new MobileControls(this.input);
 
     // One interaction target drives both affordances: the desktop
-    // `E PICK UP` prompt and the mobile TAP TO PICK UP button.
+    // prompt and the mobile TAP TO PICK UP button.
     this.interactions.mobileControls = this.mobileControls;
 
     // The mobile landscape corner cluster (fullscreen + camera) calls
@@ -895,6 +903,11 @@ if (controllerButton) {
     });
     this.mobileControls.setFullscreenActive(this.fullscreen.isActive);
 
+    // Paint the initial (OFF) Auto Loot state onto both surfaces from the
+    // one shared value, so the dash pill and the touch button start in
+    // step with AutoLootController.
+    this.renderAutoLootState(this.autoLoot.enabled);
+
     // Touch-primary devices default straight into touch controls;
     // desktop with a mouse/trackpad keeps the existing keyboard default.
     if (this.mobileControls.isTouchDevice) {
@@ -914,8 +927,8 @@ if (controllerButton) {
   // here; until then these are safe no-ops.
   // ---------------------------------------------------------------
 
-  // Single place a world drop turns into inventory contents, so the
-  // desktop E key and the mobile interact button behave identically.
+  // Single place a world drop turns into inventory contents, so Auto Loot
+  // and the mobile interact button behave identically.
   // Short confirmation blip for using an inventory item.
   playItemUseTone() {
     if (!this.audio?.effectsBus) return;
@@ -1009,6 +1022,72 @@ if (controllerButton) {
       type: "triangle",
       destination: this.audio.effectsBus
     });
+  }
+
+  // The single definition of "a drop this client may collect right now",
+  // used by BOTH the interaction prompt and the Auto Loot sweep.
+  //
+  // Re-validated on every call: a drop that has been collected (locally or
+  // by another player) or removed by the server is never returned, and a
+  // pickup already awaiting a server answer is skipped so Auto Loot cannot
+  // spam duplicate requests for the same item.
+  nearestPickupCandidate(position) {
+    if (!position || !this.loot) return null;
+
+    const drop = this.loot.nearest(position);
+
+    if (!drop || !this.loot.isAvailable(drop)) return null;
+    if (drop.pickupId && this.pendingPickups.has(drop.pickupId)) return null;
+
+    return drop;
+  }
+
+  // Single entry point for the F key AND the mobile Auto Loot button.
+  toggleAutoLoot() {
+    return this.autoLoot.toggle();
+  }
+
+  isAutoLootEnabled() {
+    return this.autoLoot?.enabled === true;
+  }
+
+  // One Auto Loot sweep, run from the throttled HUD tick. Goes through
+  // collectDrop(), i.e. the existing server-authoritative pickup path.
+  updateAutoLoot(position) {
+    return this.autoLoot.update({
+      findCandidate: () => this.nearestPickupCandidate(position),
+      collect: drop => this.collectDrop(drop)
+    });
+  }
+
+  // Mirrors the Auto Loot state onto every surface that shows it. Called
+  // only on real transitions (AutoLootController.onChange).
+  renderAutoLootState(enabled) {
+    const active = enabled === true;
+
+    if (this.autoLootStatusElement) {
+      this.autoLootStatusElement.textContent =
+        `AUTO LOOT: ${active ? "ACTIVE" : "OFF"}`;
+
+      this.autoLootStatusElement.classList.toggle(
+        "dash-pill-autoloot--active", active
+      );
+
+      this.autoLootStatusElement.setAttribute(
+        "aria-label",
+        `Auto loot ${active ? "active" : "off"}`
+      );
+    }
+
+    this.mobileControls?.setAutoLootActive?.(active);
+
+    // Short, existing-notice feedback only when the player actually flips
+    // it -- never for the initial paint, and never a persistent overlay.
+    if (this._autoLootRendered) {
+      this.showNotice(`AUTO LOOT ${active ? "ON" : "OFF"}`, 1.2);
+    }
+
+    this._autoLootRendered = true;
   }
 
   collectDrop(drop) {
@@ -1118,6 +1197,7 @@ if (controllerButton) {
   this.input.keys.clear();
   this.input.resetRequested = false;
   this.input.turretToggleRequested = false;
+  this.input.autoLootToggleRequested = false;
   this.input.disarm();
 
   if (this.audio.context) {
@@ -1612,7 +1692,9 @@ this.renderer.render(this.scene, this.camera);
     // InventorySystem.useItem() path as the Cargo panel's USE buttons.
     const hotbarKey = this.input.consumeHotbarSlot();
     if (hotbarKey) this.itemHotbar?.handleKey(hotbarKey);
-    if (this.input.consumeInteract()) this.triggerInteraction();
+    // F flips Auto Loot. Edge-triggered in InputManager, so key repeat
+    // can never toggle it more than once per physical press.
+    if (this.input.consumeAutoLootToggle()) this.toggleAutoLoot();
 
     if (timeMs - this.lastHudTime >= 100) {
       // Minimap + POI discovery ride the existing 100ms HUD throttle
@@ -1622,6 +1704,12 @@ this.renderer.render(this.scene, this.camera);
 
       this.pois?.update(carPosition);
       this.interactions?.update(carPosition);
+
+      // Auto Loot rides the same throttle as the interaction probe and
+      // reuses its candidate + collectDrop path (no second pipeline).
+      if (this.autoLoot?.enabled && !this.playerHealth?.dead) {
+        this.updateAutoLoot(carPosition);
+      }
 
       if (this.minimap) {
         // The chassis' forward axis is local +Z (VehiclePhysics sets

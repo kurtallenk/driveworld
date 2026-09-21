@@ -6,8 +6,12 @@
 // Providers register a `probe(position)` function that returns either null
 // or { label, verb, activate() }. The system picks the nearest available
 // one, drives a single reusable DOM prompt (desktop) and the mobile
-// interact button (MobileControls.setInteraction), and routes E / tap to
-// the active target.
+// interact button (MobileControls.setInteraction), and routes the mobile
+// tap to the active target.
+//
+// Desktop no longer has a manual pickup key: the prompt's keycap shows the
+// Auto Loot key (F), because turning Auto Loot on is how a desktop player
+// collects the highlighted drop.
 //
 // Performance: the prompt element is created once and only written to when
 // the target or its label actually changes -- no per-frame DOM churn. The
@@ -22,10 +26,19 @@ export class InteractionSystem {
 
     this.mobileControls = mobileControls;
 
+    // Keycap shown in the desktop prompt. Defaults to the Auto Loot key
+    // so the displayed control always matches the real binding.
+    this.keyHint = "F";
+
     this.providers = [];
     this.current = null;
     this._renderedLabel = null;
     this._touchMode = false;
+  }
+
+  setKeyHint(key) {
+    this.keyHint = String(key ?? "");
+    this._renderedLabel = null;
   }
 
   register(probe) {
@@ -67,7 +80,7 @@ export class InteractionSystem {
   // waiting for the next throttled update(). Called whenever the thing the
   // player was standing next to stops being collectable -- consumed
   // locally, awarded to somebody else, or removed by the server -- so a
-  // stale "E PICK UP BATTERY" prompt can never survive the item.
+  // stale "PICK UP BATTERY" prompt can never survive the item.
   clear() {
     this.current = null;
     this._renderedLabel = null;
@@ -90,7 +103,7 @@ export class InteractionSystem {
       this.promptEl.hidden = !label || this._touchMode;
 
       if (label && this.labelEl) this.labelEl.textContent = label;
-      if (this.keyEl) this.keyEl.textContent = "E";
+      if (this.keyEl) this.keyEl.textContent = this.keyHint;
     }
 
     this.mobileControls?.setInteraction(
@@ -99,7 +112,7 @@ export class InteractionSystem {
     );
   }
 
-  // Called by the E key and the mobile interact button.
+  // Called by the mobile interact button (and by any future binding).
   activate() {
     const target = this.current;
 

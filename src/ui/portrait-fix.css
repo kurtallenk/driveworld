@@ -934,19 +934,19 @@ body[data-mc-orientation="portrait"] #hud
 }
 
 #mobile-controls[data-orientation="portrait"]
-	:is(.mc-util-btn--map, .mc-util-btn--bag) {
+	:is(.mc-util-btn--map, .mc-util-btn--bag, .mc-util-btn--loot) {
 	width: var(--pf-util-w-used) !important;
 	height: var(--pf-util-h-used) !important;
 }
 
 #mobile-controls[data-orientation="portrait"]
-	:is(.mc-util-btn--map, .mc-util-btn--bag)
+	:is(.mc-util-btn--map, .mc-util-btn--bag, .mc-util-btn--loot)
 	.mc-util-icon {
 	display: var(--pf-util-icon);
 }
 
 #mobile-controls[data-orientation="portrait"]
-	:is(.mc-util-btn--map, .mc-util-btn--bag)
+	:is(.mc-util-btn--map, .mc-util-btn--bag, .mc-util-btn--loot)
 	.mc-util-icon
 	svg {
 	width: max(0.6rem, calc(12 * var(--pf-u)));
@@ -954,7 +954,7 @@ body[data-mc-orientation="portrait"] #hud
 }
 
 #mobile-controls[data-orientation="portrait"]
-	:is(.mc-util-btn--map, .mc-util-btn--bag)
+	:is(.mc-util-btn--map, .mc-util-btn--bag, .mc-util-btn--loot)
 	.mc-util-label {
 	font-size: max(0.36rem, calc(8 * var(--pf-u)));
 	letter-spacing: 0.06em;
@@ -1160,4 +1160,29 @@ body.mobile-controls-active #mobile-controls .mc-util,
 body.mobile-controls-active #mobile-controls .mc-hud-top-actions,
 body.mobile-controls-active #mobile-controls .mc-shifter {
 	z-index: 60;
+}
+
+
+/* -------------------------------------------------------------------------
+   Mobile chat + software keyboard
+   -------------------------------------------------------------------------
+   When a phone keyboard opens, the visual viewport becomes much shorter.
+   The normal portrait composition intentionally uses !important positioning,
+   so the focused chat input needs an explicit keyboard-open override. Docking
+   the whole panel above the keyboard keeps both the panel and input visible
+   while typing instead of allowing the portrait layout to clip it.
+*/
+body.mobile-controls-active #chat-panel.chat-keyboard-open {
+	position: fixed !important;
+	top: auto !important;
+	bottom: var(--chat-keyboard-bottom, 8px) !important;
+	max-height: calc(100dvh - var(--chat-keyboard-bottom, 8px) - 8px) !important;
+	overflow: hidden;
+	z-index: 999 !important;
+}
+
+body.mobile-controls-active #chat-panel.chat-keyboard-open #chat-log {
+	min-height: 0;
+	max-height: min(120px, 24dvh);
+	overflow-y: auto;
 }

@@ -368,6 +368,24 @@ export class MobileControls {
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-1.3 11.2a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 8zm4.5 0V6.2A3.2 3.2 0 0 1 11.7 3h.6A3.2 3.2 0 0 1 15.5 6.2V8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
     );
 
+    // Auto Loot lives in the utility rail rather than the driving action
+    // cluster: it is a deliberate, stateful toggle (like MAP and BAG,
+    // which already use the mc-util-btn--on state), it is nowhere near
+    // steering or the pedals, and the rail is already placed clear of the
+    // minimap and the chat panel in BOTH orientations with safe-area
+    // insets and the shared --mc-hit-min touch floor applied.
+    this.autoLootBtnEl = this.makeUtilButton(
+      "loot",
+      "LOOT",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16l-1.2 10.2a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8L4 9zm4-1a4 4 0 0 1 8 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 12v5m-2.2-2.8L12 17l2.2-2.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    );
+
+    // Announced as a toggle, not an action, and its state is carried by
+    // aria-pressed AND by the visible label text -- never by colour alone.
+    this.autoLootBtnEl.setAttribute("aria-label", "Auto loot, off");
+    this.autoLootBtnEl.setAttribute("aria-pressed", "false");
+    this.autoLootBtnEl.title = "AUTO LOOT";
+
     this.pauseBtnEl = this.makeUtilButton(
       "pause",
       "Menu",
@@ -377,6 +395,7 @@ export class MobileControls {
     this.utilEl.append(
       this.mapBtnEl,
       this.inventoryBtnEl,
+      this.autoLootBtnEl,
       this.pauseBtnEl
     );
 
@@ -470,6 +489,16 @@ export class MobileControls {
     this._onInteract = null;
 
     this.mapBtnEl.addEventListener("click", () => this._onMap?.());
+
+    // Goes through the SAME edge-triggered request the F key sets, so the
+    // touch button and the keyboard can never drive two Auto Loot states.
+    // This class deliberately holds no Auto Loot state of its own -- the
+    // button's appearance is only ever written by setAutoLootActive(),
+    // which Game calls from AutoLootController.onChange.
+    this.autoLootBtnEl.addEventListener(
+      "click",
+      () => this.input.requestAutoLootToggle()
+    );
     this.inventoryBtnEl.addEventListener("click", () => this._onInventory?.());
     this.pauseBtnEl.addEventListener("click", () => this._onPause?.());
     this.interactEl.addEventListener("click", () => this._onInteract?.());
@@ -495,6 +524,24 @@ export class MobileControls {
 
   setMapOpen(open) {
     this.mapBtnEl?.classList.toggle("mc-util-btn--on", Boolean(open));
+  }
+
+  // Mirrors the one shared Auto Loot state onto the touch button. Called
+  // by Game.renderAutoLootState(), the same place the desktop dash pill is
+  // written, so the two readouts cannot drift apart.
+  setAutoLootActive(active) {
+    const on = Boolean(active);
+    const el = this.autoLootBtnEl;
+
+    if (!el) return;
+
+    el.classList.toggle("mc-util-btn--on", on);
+    el.setAttribute("aria-pressed", on ? "true" : "false");
+    el.setAttribute("aria-label", on ? "Auto loot, on" : "Auto loot, off");
+    el.title = on ? "AUTO LOOT \u2022 ON" : "AUTO LOOT";
+
+    const label = el.querySelector(".mc-util-label");
+    if (label) label.textContent = on ? "LOOT ON" : "LOOT";
   }
 
   // ---------------------------------------------------------------

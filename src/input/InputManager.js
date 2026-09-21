@@ -62,12 +62,16 @@ export class InputManager {
     this.resetRequested = false;
     this.turretToggleRequested = false;
 
+    // Auto Loot is a persistent player setting owned by Game (see
+    // AutoLootController). Input only reports "the player asked to flip
+    // it", using the same consume-once contract as the flags above.
+    this.autoLootToggleRequested = false;
+
     // Edge-triggered UI requests, same consume-once contract as the
     // reset/turret flags above. Kept here rather than in Game.js so
     // keyboard and touch both funnel through one input surface.
     this.mapToggleRequested = false;
     this.inventoryToggleRequested = false;
-    this.interactRequested = false;
 
     // Hotbar slot request: holds the digit key code ("Digit1"/"Digit2")
     // until Game.js consumes it, same consume-once contract as above.
@@ -107,11 +111,16 @@ export class InputManager {
     this.restorePreference();
 
     const handled = new Set([
-      "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR", "KeyF",
+      "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR",
       "ShiftLeft", "ShiftRight",
 
-      // UI keys: map, inventory, interact.
-      "KeyM", "KeyI", "KeyE",
+      // T deploys/stows the turret, F toggles Auto Loot. There is no
+      // manual pickup key any more: loot is collected by Auto Loot (F)
+      // on desktop and by the touch interact button on mobile.
+      "KeyT", "KeyF",
+
+      // UI keys: map, inventory.
+      "KeyM", "KeyI",
 
       // Consumable hotbar slots.
       "Digit1", "Digit2"
@@ -137,14 +146,20 @@ export class InputManager {
         this.resetRequested = true;
       }
 
-      // Edge-triggered: only the initial keydown sets this, so holding F
+      // Edge-triggered: only the initial keydown sets this, so holding T
       // never repeatedly toggles the turret (event.repeat guards against
       // the browser's own key-repeat firing more keydown events).
-      if (event.code === "KeyF" && !event.repeat) {
+      if (event.code === "KeyT" && !event.repeat) {
         this.turretToggleRequested = true;
       }
 
-      // All edge-triggered for the same reason as KeyF: holding the
+      // Same edge-trigger contract, so browser key repeat can never
+      // flip Auto Loot more than once per physical press.
+      if (event.code === "KeyF" && !event.repeat) {
+        this.autoLootToggleRequested = true;
+      }
+
+      // All edge-triggered for the same reason as KeyT: holding the
       // key must never repeatedly toggle a panel.
       if (event.code === "KeyM" && !event.repeat) {
         this.mapToggleRequested = true;
@@ -152,10 +167,6 @@ export class InputManager {
 
       if (event.code === "KeyI" && !event.repeat) {
         this.inventoryToggleRequested = true;
-      }
-
-      if (event.code === "KeyE" && !event.repeat) {
-        this.interactRequested = true;
       }
 
       if ((event.code === "Digit1" || event.code === "Digit2") && !event.repeat) {
@@ -174,9 +185,9 @@ export class InputManager {
       this.keys.clear();
       this.resetRequested = false;
       this.turretToggleRequested = false;
+      this.autoLootToggleRequested = false;
       this.mapToggleRequested = false;
       this.inventoryToggleRequested = false;
-      this.interactRequested = false;
       this.mobileTurboHeld = false;
       this.disarm();
     };
@@ -365,13 +376,21 @@ export class InputManager {
     );
   }
 
-  // Edge-triggered, same semantics as the KeyF keydown handler above (see
+  // Edge-triggered, same semantics as the KeyT keydown handler above (see
   // turretToggleRequested there): a single tap always requests exactly one
   // toggle, regardless of how long the mobile button is held. Feeds the
   // same consumeTurretToggle() the keyboard/gamepad paths already use, so
   // there is exactly one turret-deployment trigger in the codebase.
   requestTurretToggle() {
     this.turretToggleRequested = true;
+  }
+
+  // The mobile Auto Loot button's only entry point. Identical contract to
+  // requestTurretToggle() above: one tap == one toggle request, consumed
+  // by the same consumeAutoLootToggle() the F key feeds, so touch and
+  // keyboard can never drive two different Auto Loot states.
+  requestAutoLootToggle() {
+    this.autoLootToggleRequested = true;
   }
 
   disarm() {
@@ -542,7 +561,7 @@ export class InputManager {
 
     const manualCapable = Boolean(this.controllerProfile.mapping.clutch);
 
-    // Edge-triggered, same convention as the KeyF turret toggle above:
+    // Edge-triggered, same convention as the KeyT turret toggle above:
     // only a fresh press advances the gear, so holding a paddle down
     // never repeatedly shifts.
     if (manualCapable) {
@@ -619,12 +638,6 @@ export class InputManager {
     return requested;
   }
 
-  consumeInteract() {
-    const requested = this.interactRequested;
-    this.interactRequested = false;
-    return requested;
-  }
-
   consumeHotbarSlot() {
     const requested = this.hotbarSlotRequested;
     this.hotbarSlotRequested = null;
@@ -634,6 +647,12 @@ export class InputManager {
   consumeTurretToggle() {
     const requested = this.turretToggleRequested;
     this.turretToggleRequested = false;
+    return requested;
+  }
+
+  consumeAutoLootToggle() {
+    const requested = this.autoLootToggleRequested;
+    this.autoLootToggleRequested = false;
     return requested;
   }
 

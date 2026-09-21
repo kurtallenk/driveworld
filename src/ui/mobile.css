@@ -359,6 +359,16 @@
 	border-color: var(--dw-accent);
 }
 
+/* AUTO LOOT tile. Same size/family as MAP and BAG (see ui/mobile-layout.css
+   for the shared touch-target floor); only the label needs to stay on one
+   line once it grows to "LOOT ON". The active state is the shared
+   .mc-util-btn--on treatment plus that label change, so the state is never
+   communicated by colour alone. */
+.mc-util-btn--loot .mc-util-label {
+	white-space: nowrap;
+	font-size: 0.45rem;
+}
+
 /* -------------------------------------------------------------------------
    INTERACTION BUTTON
    Only rendered when something is in range. Sits above the pedal column
