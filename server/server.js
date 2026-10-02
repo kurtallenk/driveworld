@@ -10,6 +10,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { EnemyWorld } from "./EnemyWorld.js";
 import { LootWorld } from "./LootWorld.js";
 import { ENEMY_CONFIG, PLAYER_CONFIG, TURRET_CONFIG } from "../src/turret/TurretConfig.js";
+import { VEHICLE_CLASSES } from "../src/vehicle/VehicleConfig.js";
 import { getEvolutionStage } from "../src/gameplay/EvolutionConfig.js";
 
 const PORT = Number(process.env.PORT || 3001);
@@ -53,6 +54,17 @@ const lootWorld = new LootWorld();
 // it's a forged/cheated message. This bound is deliberately generous.
 const MAX_TURRET_HIT_DAMAGE = TURRET_CONFIG.damage * 10;
 const MAX_ENEMY_ID_LENGTH = 32;
+
+// Vehicle classes the client may announce (?vehicle=). Anything else, and
+// every older client that sends nothing, is the original light vehicle.
+const VEHICLE_CLASS_DAMAGE_TAKEN = Object.freeze({
+  light: VEHICLE_CLASSES.light.damageTakenMultiplier,
+  heavy: VEHICLE_CLASSES.heavy.damageTakenMultiplier
+});
+
+function sanitizeVehicleClass(value) {
+  return Object.hasOwn(VEHICLE_CLASS_DAMAGE_TAKEN, value) ? value : "light";
+}
 
 // Session-only delivery stats (Phase 2). There is no database in this
 // project, so the leaderboard tracks players connected during the
@@ -467,6 +479,9 @@ function applyDamageToPlayer(playerId, amount, enemyId) {
     return;
   }
 
+  // Heavy vehicle armor (VehicleConfig.js damageTakenMultiplier).
+  amount *= VEHICLE_CLASS_DAMAGE_TAKEN[player.vehicleClass] ?? 1;
+
   player.combat.health = Math.max(0, player.combat.health - amount);
 
   if (player.combat.health <= 0) {
@@ -520,6 +535,7 @@ function publicPlayer(player) {
     id: player.id,
     name: player.name,
     color: player.color,
+    vehicleClass: player.vehicleClass,
     spawn: player.spawn,
     state: player.state
   };
@@ -645,10 +661,12 @@ wss.on("connection", (ws, request) => {
   const id = randomUUID();
 
   let requestedName = null;
+  let vehicleClass = "light";
 
   try {
     const { searchParams } = new URL(request.url, "http://localhost");
     requestedName = sanitizeName(searchParams.get("name"));
+    vehicleClass = sanitizeVehicleClass(searchParams.get("vehicle"));
   } catch {
     requestedName = null;
   }
@@ -659,6 +677,7 @@ wss.on("connection", (ws, request) => {
     slot,
     name: requestedName || fallbackName(id),
     color: COLORS[slot],
+    vehicleClass,
     spawn,
     state: initialState(spawn),
     combat: initialCombat(),

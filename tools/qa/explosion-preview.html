@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Explosion tiers (QA)</title>
+<style>html,body{margin:0;height:100%;background:#8fb5d6}canvas{display:block}</style></head>
+<body><script type="module">
+// QA-only: renders impact / shell / missile / vehicle / boss tiers side by side at ?t= seconds.
+import * as THREE from "three";
+import { ExplosionManager } from "/src/turret/ExplosionManager.js";
+import { APEX_ROCKET_LAUNCH_FLASH_CONFIG, HEAVY_SHELL_EXPLOSION_CONFIG, PLAYER_MISSILE_EXPLOSION_CONFIG, VEHICLE_EXPLOSION_CONFIG, BOSS_EXPLOSION_CONFIG } from "/src/turret/ExplosionEffect.js";
+const t = Number(new URLSearchParams(location.search).get("t") || 0.12);
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8fb5d6);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445533, 1.2));
+const g = new THREE.Mesh(new THREE.PlaneGeometry(120, 60), new THREE.MeshStandardMaterial({ color: 0x55606a })); g.rotation.x = -Math.PI / 2; scene.add(g);
+const m = new ExplosionManager(scene, { lightCount: 2, reducedMotion: true, limits: { maxActive: 10, maxParticles: 999 } });
+[[APEX_ROCKET_LAUNCH_FLASH_CONFIG, -20], [HEAVY_SHELL_EXPLOSION_CONFIG, -12], [PLAYER_MISSILE_EXPLOSION_CONFIG, -3], [VEHICLE_EXPLOSION_CONFIG, 8], [BOSS_EXPLOSION_CONFIG, 22]]
+  .forEach(([c, x]) => m.spawn(new THREE.Vector3(x, 0, 0), c));
+for (let a = 0; a < t; a += 1 / 60) m.update(1 / 60);
+const cam = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 300); cam.position.set(0, 9, 34); cam.lookAt(0, 2, 0);
+r.render(scene, cam); window.__ready = true;
+</script></body></html>

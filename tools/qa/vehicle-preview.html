@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Vehicle preview (QA)</title>
+<style>html,body{margin:0;height:100%;background:#8fb5d6}canvas{display:block}</style></head>
+<body>
+<script type="module">
+// QA-only page: renders Light + Heavy vehicles side by side.
+// Query: ?view=front|rear|side|top|three&stage=0..5&deploy=0..1
+import * as THREE from "three";
+import { buildVehicleBody, buildWheelGeometries, createWheel } from "/src/vehicle/VehicleVisual.js";
+import { VEHICLE_CLASSES } from "/src/vehicle/VehicleConfig.js";
+import { VehicleEvolutionRig } from "/src/vehicle/VehicleEvolution.js";
+import { createTurretAssemblyForPath } from "/src/turret/HeavyTurretModel.js";
+import { applyTurretPose } from "/src/turret/TurretPose.js";
+import { TurretEvolutionRig } from "/src/turret/TurretEvolution.js";
+
+const q = new URLSearchParams(location.search);
+const view = q.get("view") || "three";
+const stage = Number(q.get("stage") || 0);
+const deploy = Number(q.get("deploy") || 0);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fb5d6);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445533, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(6, 10, 7); sun.castShadow = true; scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: 0x55606a }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.0; ground.receiveShadow = true; scene.add(ground);
+
+const wheelGeo = buildWheelGeometries();
+window.__rigs = [];
+[["light", -1.8, 0xd33b2f], ["heavy", 1.9, 0x5a6b3a]].forEach(([id, x, color]) => {
+  const cls = VEHICLE_CLASSES[id];
+  const h = cls.handling;
+  const root = new THREE.Group();
+  // wheel bottom on ground: wheel center at y = rest(0.35)-compress(~0.08) below root
+  const wheelCenterY = -(0.35 - 0.08);
+  root.position.set(x, h.wheelRadius - wheelCenterY, 0);
+  scene.add(root);
+  const vis = buildVehicleBody(root, color, cls.bodyType);
+  h.wheelPositions.forEach(([wx, wz], i) => {
+    const w = createWheel(wheelGeo, vis.mat, i % 2 === 0 ? 1 : -1);
+    w.scale.setScalar(h.wheelRadius / 0.36);
+    w.position.set(wx, wheelCenterY, wz);
+    root.add(w);
+  });
+  const evoRoot = new THREE.Group();
+  evoRoot.scale.set(...cls.evolutionScale);
+  root.add(evoRoot);
+  const evo = new VehicleEvolutionRig(evoRoot);
+  evo.setStage(stage, { animate: false });
+  const a = createTurretAssemblyForPath(cls.turretPath, color);
+  a.root.position.set(cls.turretAnchor.x, cls.turretAnchor.y, cls.turretAnchor.z);
+  root.add(a.root);
+  const tevo = new TurretEvolutionRig(a.parts, cls.turretPath);
+  tevo.setStage?.(stage, { animate: false });
+  applyTurretPose(a.parts, { progress: deploy, yaw: Number(q.get("yaw") || 0), pitch: 0.05, recoil: 0, flash: 0 });
+  tevo.update?.(0.016, { deployed: deploy >= 1, firing: false });
+  window.__rigs.push({ id, root });
+});
+const zoom = Number(q.get("zoom") || 1);
+const cam = new THREE.PerspectiveCamera(40 / zoom, innerWidth / innerHeight, 0.1, 200);
+const views = { front: [0, 2.2, 11], rear: [0, 2.4, -11], side: [11, 1.8, 0], top: [0, 14, 0.01], three: [8, 4.5, 8.5] };
+const closeUps = {
+  turretH: [[5.6, 3.0, 0.4], [1.9, 2.45, -0.5]],
+  turretL: [[0.9, 3.0, 2.4], [-1.8, 1.95, -0.6]]
+};
+if (closeUps[view]) {
+  cam.position.set(...closeUps[view][0]);
+  cam.lookAt(...closeUps[view][1]);
+} else {
+  cam.position.set(...(views[view] || views.three));
+  cam.lookAt(0, 0.8, 0);
+}
+renderer.render(scene, cam);
+window.__ready = true;
+</script>
+</body>
+</html>

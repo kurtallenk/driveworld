@@ -67,6 +67,57 @@
               <p id="name-error" role="alert"></p>
             </div>
 
+            <fieldset class="vehicle-select" id="vehicle-select">
+              <legend class="vehicle-select-title">Choose your vehicle</legend>
+              <div class="vehicle-select-grid">
+                <label class="vehicle-card" data-vehicle-card="light">
+                  <input type="radio" name="vehicle-class" value="light" class="vehicle-card-input" />
+                  <span class="vehicle-card-art" aria-hidden="true">
+                    <svg viewBox="0 0 96 48" width="96" height="48" focusable="false">
+                      <path d="M10 33 L14 24 Q17 20 24 19 L36 18 L46 11 Q49 9 54 9 L66 9 Q71 9 74 13 L80 19 Q87 20 89 25 L90 33 Z" fill="currentColor" opacity="0.92"/>
+                      <path d="M45 18 L52 12 L62 12 L62 18 Z M65 12 L70 12 L75 18 L65 18 Z" fill="#0b1420" opacity="0.8"/>
+                      <circle cx="26" cy="34" r="7" fill="#0b1420"/><circle cx="26" cy="34" r="3" fill="#9fb3c8"/>
+                      <circle cx="74" cy="34" r="7" fill="#0b1420"/><circle cx="74" cy="34" r="3" fill="#9fb3c8"/>
+                    </svg>
+                  </span>
+                  <span class="vehicle-card-text">
+                    <span class="vehicle-card-name">Light Vehicle</span>
+                    <span class="vehicle-card-tagline">Fast and agile</span>
+                    <span class="vehicle-card-traits">
+                      <span>Quicker acceleration &amp; top speed</span>
+                      <span>Tighter steering</span>
+                      <span>Rapid-fire turret evolution</span>
+                    </span>
+                  </span>
+                  <span class="vehicle-card-badge" aria-hidden="true">Selected</span>
+                </label>
+                <label class="vehicle-card" data-vehicle-card="heavy">
+                  <input type="radio" name="vehicle-class" value="heavy" class="vehicle-card-input" />
+                  <span class="vehicle-card-art" aria-hidden="true">
+                    <svg viewBox="0 0 96 48" width="96" height="48" focusable="false">
+                      <path d="M6 34 L7 20 Q8 16 13 16 L30 16 L34 8 L62 8 L66 16 L84 16 Q89 16 90 21 L91 34 Z" fill="currentColor" opacity="0.92"/>
+                      <rect x="38" y="11" width="20" height="5" fill="#0b1420" opacity="0.8"/>
+                      <rect x="40" y="2" width="16" height="6" rx="1" fill="currentColor"/>
+                      <rect x="55" y="3.5" width="26" height="3" fill="currentColor"/>
+                      <rect x="6" y="24" width="85" height="3" fill="#0b1420" opacity="0.35"/>
+                      <circle cx="22" cy="35" r="8.5" fill="#0b1420"/><circle cx="22" cy="35" r="3.5" fill="#9fb3c8"/>
+                      <circle cx="76" cy="35" r="8.5" fill="#0b1420"/><circle cx="76" cy="35" r="3.5" fill="#9fb3c8"/>
+                    </svg>
+                  </span>
+                  <span class="vehicle-card-text">
+                    <span class="vehicle-card-name">Heavy Vehicle</span>
+                    <span class="vehicle-card-tagline">Armored and powerful</span>
+                    <span class="vehicle-card-traits">
+                      <span>Takes 30% less damage</span>
+                      <span>Heavy cannon turret, own evolution</span>
+                      <span>Slower speed &amp; wider turns</span>
+                    </span>
+                  </span>
+                  <span class="vehicle-card-badge" aria-hidden="true">Selected</span>
+                </label>
+              </div>
+            </fieldset>
+
             <button id="start" class="intro-drive-btn">
               <span class="intro-drive-icon" aria-hidden="true">&#128663;</span>
               <span class="intro-drive-label">Drive</span>
@@ -82,10 +133,38 @@
           <aside class="intro-patch" aria-labelledby="intro-patch-title">
             <div class="intro-patch-header">
               <h2 id="intro-patch-title">What&rsquo;s new</h2>
-              <span class="intro-patch-version">v0.2</span>
+              <span class="intro-patch-version">v0.3</span>
             </div>
 
             <ul class="intro-patch-list">
+
+              <li class="intro-patch-item intro-patch-item--latest" style="--patch-color: #ffb45e">
+                <span class="intro-patch-icon" aria-hidden="true">&#128666;</span>
+                <div class="intro-patch-copy">
+                  <p class="intro-patch-name">
+                    Heavy Vehicle <span class="intro-patch-badge">New</span>
+                  </p>
+                  <p class="intro-patch-desc">
+                    Pick Light or Heavy before you drive. Heavy takes 30% less
+                    damage and has a cannon turret with its own evolution, but
+                    is slower with wider turns. Light is unchanged.
+                  </p>
+                </div>
+              </li>
+
+              <li class="intro-patch-item intro-patch-item--latest" style="--patch-color: #ff7a3d">
+                <span class="intro-patch-icon" aria-hidden="true">&#128165;</span>
+                <div class="intro-patch-copy">
+                  <p class="intro-patch-name">
+                    Bigger explosions <span class="intro-patch-badge">Improved</span>
+                  </p>
+                  <p class="intro-patch-desc">
+                    Cannon shells, missiles, destroyed vehicles and bosses now
+                    explode with their own size, a light flash and a subtle
+                    camera shake (off with reduced motion).
+                  </p>
+                </div>
+              </li>
 
               <li class="intro-patch-item" style="--patch-color: #6fd0ff"> 
                 <span class="intro-patch-icon" aria-hidden="true">&#11088;</span> 
