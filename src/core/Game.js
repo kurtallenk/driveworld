@@ -14,6 +14,7 @@ import { VehicleFeedback } from "../vehicle/VehicleFeedback.js";
 import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
 import { ControllerCalibrationWizard } from "../ui/ControllerCalibrationWizard.js";
 import { MobileControls } from "../ui/MobileControls.js";
+import { DrivingTutorial } from "../ui/DrivingTutorial.js";
 import { ItemHotbar } from "../ui/ItemHotbar.js";
 import { KeyboardPanelControls } from "../ui/KeyboardPanelControls.js";
 import { HudVisibility, HUD_MODE_LABELS } from "../ui/HudVisibility.js";
@@ -916,6 +917,22 @@ if (controllerButton) {
       this.interactions?.setTouchMode(true);
       this.mobileControls.setDrivingMode(this.drivingMode);
     }
+
+    // First-time driving guide. It only observes the same input sample the
+    // car receives (see frame()); it never drives or pauses the game.
+    this.tutorial = new DrivingTutorial({
+      input: this.input,
+      mobileControls: this.mobileControls,
+      menu: this.menu
+    });
+
+    // Menu -> Controls / Help replays the guide at any time.
+    for (const button of document.querySelectorAll("[data-open-guide]")) {
+      button.addEventListener("click", () => {
+        this.menu.close();
+        this.tutorial.start();
+      });
+    }
   }
 
   // ---------------------------------------------------------------
@@ -1227,6 +1244,12 @@ if (controllerButton) {
     this.accumulator += dt;
 
     const input = this.input.sample();
+
+    this.tutorial?.update(
+      input,
+      this.vehiclePhysics.body.velocity.length() * 3.6,
+      dt
+    );
 
     if (
       this.input.consumeTurretToggle() &&
@@ -1741,7 +1764,10 @@ this.renderer.render(this.scene, this.camera);
       }
 
       if (this.input.mode === "keyboard" && this.keyboardPanelElement) {
-        for (const keyEl of this.keyboardPanelElement.querySelectorAll("[data-key]")) {
+        // Cached once: the keycap set is static markup, so there is no
+        // need to re-query the DOM every frame.
+        this._kbdKeyEls ??= [...this.keyboardPanelElement.querySelectorAll("[data-key]")];
+        for (const keyEl of this._kbdKeyEls) {
           const code = keyEl.dataset.key;
           const altCode = keyEl.dataset.keyAlt;
           const active = this.input.keys.has(code) ||
