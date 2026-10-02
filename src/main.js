@@ -23,6 +23,7 @@ import "./ui/landscape-fix.css";
 // its small, scoped overrides win without editing the layout files above.
 import "./ui/controls-ux.css";
 import "./ui/tutorial.css";
+import "./ui/vehicle-select.css";
 
 import { Game } from "./core/Game.js";
 import { setupDiagnosticsExport } from "./ui/DiagnosticsExport.js";
@@ -33,6 +34,7 @@ import {
   savePlayerName,
   sanitizePlayerName
 } from "./ui/PlayerNameMenu.js";
+import { VehicleSelect } from "./ui/VehicleSelect.js";
 
 setupDiagnosticsExport();
 
@@ -43,6 +45,8 @@ const nameInput = document.querySelector("#player-name");
 const nameError = document.querySelector("#name-error");
 
 nameInput.value = loadSavedPlayerName();
+
+const vehicleSelect = new VehicleSelect(document.querySelector("#vehicle-select"));
 
 // Enter submits the name from the input, same as clicking Play.
 nameInput.addEventListener("keydown", event => {
@@ -79,6 +83,8 @@ startButton.addEventListener("click", async () => {
   startButton.disabled = true;
   nameInput.disabled = true;
   savePlayerName(name);
+  const vehicleClass = vehicleSelect.set(vehicleSelect.getValue());
+  vehicleSelect.setDisabled(true);
 
   status.textContent =
     "Preparing renderer, terrain, and vehicle…";
@@ -90,7 +96,7 @@ startButton.addEventListener("click", async () => {
   });
 
   try {
-    const game = new Game(document.querySelector("#game"));
+    const game = new Game(document.querySelector("#game"), { vehicleClass });
 
     game.frame(performance.now());
 
@@ -123,6 +129,7 @@ startButton.addEventListener("click", async () => {
     starting = false;
     startButton.disabled = false;
     nameInput.disabled = false;
+    vehicleSelect.setDisabled(false);
   }
 });
 

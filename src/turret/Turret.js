@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createTurretAssembly } from "./TurretModel.js";
+import { createTurretAssemblyForPath } from "./HeavyTurretModel.js";
 import { applyTurretPose } from "./TurretPose.js";
 import { TurretEffectsPool } from "./TurretEffects.js";
 import { TURRET_CONFIG, LOCAL_TURRET_ANCHOR } from "./TurretConfig.js";
@@ -7,7 +7,7 @@ import { stepAngle, stepToward, clamp, angleDifference } from "./TurretMath.js";
 import { TurretEvolutionRig } from "./TurretEvolution.js";
 import { TurretArmorRig } from "./TurretArmor.js";
 import { getTurretEvolutionConfig } from "../gameplay/EvolutionConfig.js";
-import { PLAYER_MISSILE_EXPLOSION_CONFIG } from "./ExplosionEffect.js";
+import { getWeaponImpactExplosion } from "./ExplosionEffect.js";
 
 const STATE = {
   UNDEPLOYED: "undeployed",
@@ -32,19 +32,21 @@ const scratchInverseQuat = new THREE.Quaternion();
 const scratchMuzzleWorld = new THREE.Vector3();
 
 export class Turret {
-  constructor(vehicleRoot, scene, audio, initialColor) {
+  constructor(vehicleRoot, scene, audio, initialColor, vehicleClass = null) {
     this.vehicleRoot = vehicleRoot;
     this.scene = scene;
     this.audio = audio ?? null;
 
-    const assembly = createTurretAssembly(initialColor ?? 0xef5350);
+    // Vehicle-class specific weapon path ("light" = original turret).
+    this.path = vehicleClass?.turretPath === "heavy" ? "heavy" : "light";
+    this.trackingMultiplier = vehicleClass?.turretTrackingMultiplier ?? 1;
+    this.deployMultiplier = vehicleClass?.turretDeployMultiplier ?? 1;
+
+    const assembly = createTurretAssemblyForPath(this.path, initialColor ?? 0xef5350);
     this.parts = assembly.parts;
 
-    assembly.root.position.set(
-      LOCAL_TURRET_ANCHOR.x,
-      LOCAL_TURRET_ANCHOR.y,
-      LOCAL_TURRET_ANCHOR.z
-    );
+    const anchor = vehicleClass?.turretAnchor ?? LOCAL_TURRET_ANCHOR;
+    assembly.root.position.set(anchor.x, anchor.y, anchor.z);
     vehicleRoot.add(assembly.root);
 
     this.state = STATE.UNDEPLOYED;
@@ -69,7 +71,7 @@ export class Turret {
     this.effects = new TurretEffectsPool(scene);
 
     // ---- Weapon evolution (requirement: turret evolves with level) -------
-    this.evolution = new TurretEvolutionRig(this.parts);
+    this.evolution = new TurretEvolutionRig(this.parts, this.path);
     // ---- Armor evolution -- purely visual, cumulative plating bolted onto
     // the turret body/mantlet, kept as its own rig so it can never touch
     // firing/targeting/damage (see TurretArmor.js).
@@ -146,13 +148,13 @@ export class Turret {
 
   advanceDeployState(dt) {
     if (this.state === STATE.DEPLOYING) {
-      this.progress = Math.min(1, this.progress + dt / TURRET_CONFIG.deployDuration);
+      this.progress = Math.min(1, this.progress + dt / (TURRET_CONFIG.deployDuration * this.deployMultiplier));
       if (this.progress >= 1) {
         this.state = STATE.DEPLOYED;
         this.playLockSound();
       }
     } else if (this.state === STATE.UNDEPLOYING) {
-      this.progress = Math.max(0, this.progress - dt / TURRET_CONFIG.undeployDuration);
+      this.progress = Math.max(0, this.progress - dt / (TURRET_CONFIG.undeployDuration * this.deployMultiplier));
       if (this.progress <= 0) {
         this.state = STATE.UNDEPLOYED;
         this.playLockSound();
@@ -237,7 +239,7 @@ export class Turret {
 
     if (!aimed || this.fireCooldown > 0) return;
 
-    const weapon = getTurretEvolutionConfig(this.evolutionStage);
+    const weapon = getTurretEvolutionConfig(this.evolutionStage, this.path);
 
     this.fireCooldown = 1 / (TURRET_CONFIG.fireRate * weapon.fireRateMultiplier);
     this.fireSeq = (this.fireSeq + 1) % 65536;
@@ -266,18 +268,20 @@ export class Turret {
     // hardcoded level check. Fired exactly once per shot (outside the
     // per-muzzle loop above), matching the existing single spawnImpact call
     // this replaces -- so it can never double-trigger.
-    if (weapon.weaponType === "missile") {
-      this.effects.spawnExplosion(impactPoint, PLAYER_MISSILE_EXPLOSION_CONFIG);
+    const explosion = getWeaponImpactExplosion(weapon);
+    if (explosion) {
+      this.effects.spawnExplosion(impactPoint, explosion);
     } else {
       this.effects.spawnImpact(impactPoint);
     }
 
     if (destroyed) this.target = null;
 
+    const heavy = this.path === "heavy";
     this.audio?.playToneEffect?.({
-      startFrequency: 620,
-      endFrequency: 180,
-      duration: 0.05,
+      startFrequency: heavy ? 260 : 620,
+      endFrequency: heavy ? 55 : 180,
+      duration: heavy ? 0.12 : 0.05,
       volume: 0.05,
       type: "square",
       destination: this.audio.effectsBus
@@ -318,8 +322,8 @@ export class Turret {
       this.fireCooldown = Math.max(0, this.fireCooldown - dt);
     }
 
-    this.yaw = stepAngle(this.yaw, desiredYaw, TURRET_CONFIG.rotationSpeed * dt);
-    this.pitch = stepToward(this.pitch, desiredPitch, TURRET_CONFIG.elevationSpeed * dt);
+    this.yaw = stepAngle(this.yaw, desiredYaw, TURRET_CONFIG.rotationSpeed * this.trackingMultiplier * dt);
+    this.pitch = stepToward(this.pitch, desiredPitch, TURRET_CONFIG.elevationSpeed * this.trackingMultiplier * dt);
 
     this.recoil = Math.max(0, this.recoil - dt / TURRET_CONFIG.recoilDuration);
     this.flash = Math.max(0, this.flash - dt / TURRET_CONFIG.muzzleFlashDuration);

@@ -16,9 +16,9 @@ import {
   buildWheelGeometries,
   createWheel
 } from "../vehicle/VehicleVisual.js";
+import { getVehicleClass } from "../vehicle/VehicleConfig.js";
+import { VEHICLE_EXPLOSION_CONFIG } from "../turret/ExplosionEffect.js";
 
-const COLLIDER_HALF_EXTENTS = new CANNON.Vec3(0.9, 0.3, 2);
-const COLLIDER_OFFSET = new CANNON.Vec3(0, 0.15, 0);
 const INTERPOLATION_DELAY = 120;
 const BUBBLE_ANCHOR_Y = 2.35;
 
@@ -31,6 +31,12 @@ const BUBBLE_ANCHOR_Y = 2.35;
 
     this.root = new THREE.Group();
     scene.add(this.root);
+
+    // Vehicle class relayed by the server (older servers/clients send none
+    // -> light, the original vehicle).
+    this.vehicleClass = getVehicleClass(player.vehicleClass);
+    const handling = this.vehicleClass.handling;
+    this.wheelRadius = handling.wheelRadius;
 
     this.samples = [];
     this.lastState = player.state;
@@ -46,7 +52,10 @@ const BUBBLE_ANCHOR_Y = 2.35;
         collisionFilterMask: COLLISION_GROUPS.VEHICLE
       });
 
-      this.body.addShape(new CANNON.Box(COLLIDER_HALF_EXTENTS), COLLIDER_OFFSET);
+      this.body.addShape(
+        new CANNON.Box(new CANNON.Vec3(...handling.chassisHalfExtents)),
+        new CANNON.Vec3(0, handling.chassisOffsetY, 0)
+      );
 
       if (player.state?.position) this.body.position.set(...player.state.position);
       if (player.state?.rotation) this.body.quaternion.set(...player.state.rotation);
@@ -57,7 +66,11 @@ const BUBBLE_ANCHOR_Y = 2.35;
     // IMPORTANT: this is the exact same geometry/material construction as the
     // local Vehicle.js. Only transform ownership differs: the remote root is
     // network-driven, while the local root is physics-driven.
-    const visual = buildVehicleBody(this.root, player.color);
+    const visual = buildVehicleBody(
+      this.root,
+      player.color,
+      player.vehicleType || this.vehicleClass.bodyType
+    );
     this.paint = visual.mat.paint;
     this.brakeMaterial = visual.mat.tailLamp;
     this.exhaustPoints = visual.exhaustPoints;
@@ -73,15 +86,12 @@ const BUBBLE_ANCHOR_Y = 2.35;
     // Remote wheels use the same wheel geometry as Vehicle.js. Their corner
     // pivots approximate the same chassis mounting points because no remote
     // Cannon.RaycastVehicle exists on this client.
-    for (const [x, z, front] of [
-      [-0.95, 1.35, true],
-      [0.95, 1.35, true],
-      [-0.95, -1.35, false],
-      [0.95, -1.35, false]
-    ]) {
+    const wheelScale = handling.wheelRadius / 0.36;
+    for (const [x, z, front] of handling.wheelPositions) {
       const pivot = new THREE.Group();
-      pivot.position.set(x, -0.32, z);
+      pivot.position.set(x, -0.32 - (handling.wheelRadius - 0.36), z);
       const tire = createWheel(wheelGeo, visual.mat, this.wheels.length % 2 === 0 ? 1 : -1);
+      tire.scale.setScalar(wheelScale);
       pivot.add(tire);
       this.root.add(pivot);
       this.wheels.push({ pivot, tire, front });
@@ -116,12 +126,15 @@ const BUBBLE_ANCHOR_Y = 2.35;
     this.root.add(this.label);
 
     this.chatBubble = new ChatBubble(this.root, BUBBLE_ANCHOR_Y);
-    this.turret = new RemoteTurret(this.root, this.scene, player.color);
+    this.turret = new RemoteTurret(this.root, this.scene, player.color, this.vehicleClass);
 
     // Remote evolution: initial state is applied instantly; later stage changes
     // animate exactly once, allowing every client to see another player's
     // transformation.
-    this.evolution = new VehicleEvolutionRig(this.root);
+    this.evolutionRoot = new THREE.Group();
+    this.evolutionRoot.scale.set(...this.vehicleClass.evolutionScale);
+    this.root.add(this.evolutionRoot);
+    this.evolution = new VehicleEvolutionRig(this.evolutionRoot);
     this.evolutionStage = null;
 
     this.exhaust = new ExhaustSystem(scene, this.root, this.exhaustPoints);
@@ -223,10 +236,15 @@ const BUBBLE_ANCHOR_Y = 2.35;
     const isDead = state.dead === true;
     if (isDead && !this.wasDead) {
       this.destruction.activate();
+      // Skip the burst for players who were already dead when we joined.
+      if (this.hasReceivedState) {
+        this.turret?.effects?.spawnExplosion(this.root.position.clone(), VEHICLE_EXPLOSION_CONFIG);
+      }
     } else if (!isDead && this.wasDead) {
       this.destruction.deactivate();
     }
     this.wasDead = isDead;
+    this.hasReceivedState = true;
   }
 
   // Called by MultiplayerClient when a `chat` message arrives for this
@@ -329,7 +347,7 @@ const BUBBLE_ANCHOR_Y = 2.35;
 
       // Presentation estimate; not replicated wheel physics.
       wheel.tire.rotation.x +=
-        speed / 0.36 * dt * (state.gear === -1 ? -1 : 1);
+        speed / this.wheelRadius * dt * (state.gear === -1 ? -1 : 1);
     }
 
     this.brakeMaterial.emissiveIntensity =

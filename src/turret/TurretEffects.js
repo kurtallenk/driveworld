@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Explosion } from "./ExplosionEffect.js";
+import { getExplosionManager } from "./ExplosionManager.js";
 
 // ---------------------------------------------------------------------------
 // Shared, reusable visual effects for turret fire. Geometries/materials are
@@ -118,6 +118,8 @@ export class TurretEffectsPool {
   constructor(scene) {
     this.scene = scene;
     this.effects = [];
+    // Created eagerly so its fixed flash lights exist before first render.
+    this.explosions = getExplosionManager(scene);
   }
 
   spawnTracer(from, to) {
@@ -137,10 +139,11 @@ export class TurretEffectsPool {
   // APEX Spider's rocket, in place of the small spawnImpact() burst above.
   // Drops straight into this same pool/update loop, so callers never need
   // to track it separately.
+  //
+  // Explosions are owned by the scene-wide ExplosionManager (pooling,
+  // particle caps, light flash, camera shake); Game.frame updates it once.
   spawnExplosion(position, config) {
-    const explosion = new Explosion(position, config);
-    this.scene.add(explosion.group);
-    this.effects.push(explosion);
+    return this.explosions.spawn(position, config);
   }
 
   update(dt) {

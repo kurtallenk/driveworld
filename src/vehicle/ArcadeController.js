@@ -1,5 +1,9 @@
 export class ArcadeController {
-  constructor() {
+  // maxSteerAngle / steerResponse come from the vehicle-class handling
+  // profile; the defaults are the original values (0.48 rad, 9/s).
+  constructor({ maxSteerAngle = 0.48, steerResponse = 9 } = {}) {
+    this.maxSteerAngle = maxSteerAngle;
+    this.steerResponse = steerResponse;
     this.steering = 0;
     this.direction = 1;
   }
@@ -30,13 +34,13 @@ export class ArcadeController {
       }
     }
 
-    const smoothing = 1 - Math.exp(-9 * dt);
+    const smoothing = 1 - Math.exp(-this.steerResponse * dt);
     this.steering += (input.steering - this.steering) * smoothing;
 
     const speedFactor = 1 / (1 + Math.abs(signedSpeed) * 0.035);
 
     return {
-      steeringAngle: this.steering * 0.48 * speedFactor,
+      steeringAngle: this.steering * this.maxSteerAngle * speedFactor,
       drive,
       brake,
       handbrake: input.handbrake

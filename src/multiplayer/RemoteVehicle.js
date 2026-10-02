@@ -7,7 +7,7 @@ import { HealthBar } from "../gameplay/HealthBar.js";
 import { VehicleDestruction } from "../vehicle/VehicleDestruction.js";
 import { VehicleEvolutionRig } from "../vehicle/VehicleEvolution.js";
 import { getEvolutionStage } from "../gameplay/EvolutionConfig.js";
-import { DEFAULT_VEHICLE_TYPE } from "../vehicle/VehicleConfig.js";
+import { bodyTypeForVehicleClass } from "../vehicle/VehicleConfig.js";
 import {
   buildVehicleBody,
   buildWheelGeometries,
@@ -105,7 +105,8 @@ export class RemoteVehicle {
     } = buildVehicleBody(
       this.root,
       player.color,
-      player.vehicleType || DEFAULT_VEHICLE_TYPE
+      // Older servers send no class -> light (the original body).
+      player.vehicleType || bodyTypeForVehicleClass(player.vehicleClass)
     );
 
     this.paint = mat.paint;

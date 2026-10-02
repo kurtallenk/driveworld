@@ -1,0 +1,238 @@
+/* ---------------------------------------------------------------------------
+   vehicle-select.css -- start-screen "Choose your vehicle" cards.
+   Imported last in main.js so it wins over earlier intro rules.
+   --------------------------------------------------------------------------- */
+
+.vehicle-select {
+  width: min(440px, 100%);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.vehicle-select-title {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.45rem;
+  padding: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #7de2bf;
+}
+
+.vehicle-select-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.vehicle-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  min-height: 44px;
+  padding: 0.6rem 0.65rem 0.65rem;
+  border: 1.5px solid #ffffff1f;
+  border-radius: 0.75rem;
+  background: #0c1623d9;
+  color: #b0c1d4;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background-color 0.15s ease, transform 0.12s ease;
+}
+
+.vehicle-card:hover { border-color: #ffffff40; }
+.vehicle-card:active { transform: scale(0.985); }
+
+/* Visually hidden but focusable native radio. */
+.vehicle-card-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.vehicle-card-art {
+  display: block;
+  width: 100%;
+  line-height: 0;
+}
+
+.vehicle-card-art svg {
+  display: block;
+  width: 100%;
+  max-width: 120px;
+  height: auto;
+  max-height: 52px;
+}
+
+.vehicle-card[data-vehicle-card="light"] .vehicle-card-art { color: #6fd0ff; }
+.vehicle-card[data-vehicle-card="heavy"] .vehicle-card-art { color: #ffb45e; }
+
+.vehicle-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.vehicle-card-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #eef4ff;
+}
+
+.vehicle-card-tagline {
+  font-size: 0.72rem;
+  color: #8fa3b8;
+}
+
+.vehicle-card-traits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-top: 0.25rem;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  color: #c4d2e1;
+}
+
+.vehicle-card-traits > span::before {
+  content: "\203A";
+  margin-right: 0.3em;
+  color: #7de2bf;
+}
+
+.vehicle-card-badge {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.5rem;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  background: #7de2bf;
+  color: #062018;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+/* Selected state: ring + tint + badge (not colour alone). */
+.vehicle-card.is-selected,
+.vehicle-card:has(.vehicle-card-input:checked) {
+  border-color: #7de2bf;
+  background: #12302ad9;
+  box-shadow: 0 0 0 3px #7de2bf33, 0 8px 22px -12px #7de2bf90;
+}
+
+.vehicle-card.is-selected .vehicle-card-badge,
+.vehicle-card:has(.vehicle-card-input:checked) .vehicle-card-badge {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.vehicle-card:has(.vehicle-card-input:focus-visible) {
+  outline: 2px solid #eef4ff;
+  outline-offset: 2px;
+}
+
+.vehicle-select.is-disabled .vehicle-card {
+  cursor: default;
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vehicle-card,
+  .vehicle-card-badge { transition: none; }
+  .vehicle-card:active { transform: none; }
+}
+
+/* Narrow phones: smaller art, tighter text. */
+@media (max-width: 420px) {
+  .vehicle-select-grid { gap: 0.4rem; }
+  .vehicle-card { padding: 0.5rem 0.5rem 0.55rem; }
+  .vehicle-card-art svg { max-height: 36px; max-width: 80px; }
+  .vehicle-card-name { font-size: 0.8rem; }
+  .vehicle-card-traits { font-size: 0.62rem; }
+  .vehicle-card-badge { font-size: 0.52rem; top: 0.35rem; right: 0.35rem; }
+}
+
+/* Short screens (landscape phones): horizontal compact cards, drop art and
+   trait list so DRIVE stays above the fold. Tagline stays visible. */
+@media (max-height: 480px) {
+  .vehicle-select-title { margin-bottom: 0.25rem; font-size: 0.6rem; }
+  .vehicle-card {
+    flex-direction: row;
+    align-items: center;
+    padding: 0.4rem 0.55rem;
+  }
+  .vehicle-card-art { width: auto; flex: 0 0 auto; }
+  .vehicle-card-art svg { width: 48px; max-height: 24px; }
+  .vehicle-card-traits { display: none; }
+  .vehicle-card-name { font-size: 0.78rem; padding-right: 3.6rem; }
+  .vehicle-card-tagline { font-size: 0.64rem; }
+}
+
+/* Medium-height screens (small laptops, tall phones): slimmer cards so the
+   DRIVE button stays above the fold. */
+@media (max-height: 760px) {
+  .vehicle-card { gap: 0.2rem; padding: 0.45rem 0.6rem 0.5rem; }
+  .vehicle-card-art svg { max-height: 32px; max-width: 72px; }
+  .vehicle-card-traits { margin-top: 0.15rem; }
+  .intro-main:has(.vehicle-select) .name-entry-kicker { display: none; }
+}
+
+@media (max-width: 360px) {
+  .vehicle-card-art svg { max-height: 26px; max-width: 56px; }
+  .vehicle-card-traits { font-size: 0.6rem; }
+}
+
+/* Short screens: the "Selected" pill shrinks to a check dot so it never
+   overlaps the vehicle name. */
+@media (max-height: 480px) {
+  .vehicle-card-name { padding-right: 1.3rem; }
+  .vehicle-card-badge {
+    top: 0.35rem;
+    right: 0.35rem;
+    width: 1.05rem;
+    height: 1.05rem;
+    padding: 0;
+    font-size: 0;
+    display: grid;
+    place-items: center;
+  }
+  .vehicle-card-badge::after {
+    content: "\2713";
+    font-size: 0.7rem;
+    line-height: 1;
+  }
+}
+
+/* ---- What's New: latest entries (Phase 12) ------------------------------ */
+.intro-patch-item--latest {
+  border-radius: 0.6rem;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--patch-color) 14%, transparent), transparent 70%);
+  box-shadow: inset 2px 0 0 var(--patch-color);
+  padding: 0.35rem 0.45rem;
+}
+
+/* Patch list must stay scrollable by touch even with the game's touch
+   guards active, and never trap the page on small screens. */
+.intro-patch-list {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+}

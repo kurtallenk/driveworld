@@ -1,12 +1,12 @@
 import * as THREE from "three";
-import { createTurretAssembly } from "./TurretModel.js";
+import { createTurretAssemblyForPath } from "./HeavyTurretModel.js";
 import { applyTurretPose } from "./TurretPose.js";
 import { TurretEffectsPool } from "./TurretEffects.js";
 import { TURRET_CONFIG, REMOTE_TURRET_ANCHOR } from "./TurretConfig.js";
 import { stepAngle, stepToward } from "./TurretMath.js";
 import { TurretEvolutionRig } from "./TurretEvolution.js";
 import { TurretArmorRig } from "./TurretArmor.js";
-import { PLAYER_MISSILE_EXPLOSION_CONFIG } from "./ExplosionEffect.js";
+import { getWeaponImpactExplosion } from "./ExplosionEffect.js";
 
 // ---------------------------------------------------------------------------
 // The remote counterpart to Turret.js. It never scans for targets, never
@@ -20,18 +20,18 @@ import { PLAYER_MISSILE_EXPLOSION_CONFIG } from "./ExplosionEffect.js";
 const VISUAL_TRACER_LENGTH = 22;
 
 export class RemoteTurret {
-  constructor(vehicleRoot, scene, color) {
+  constructor(vehicleRoot, scene, color, vehicleClass = null) {
     this.vehicleRoot = vehicleRoot;
     this.scene = scene;
 
-    const assembly = createTurretAssembly(color ?? 0x9aa0a6);
+    this.path = vehicleClass?.turretPath === "heavy" ? "heavy" : "light";
+    this.trackingMultiplier = vehicleClass?.turretTrackingMultiplier ?? 1;
+    this.deployMultiplier = vehicleClass?.turretDeployMultiplier ?? 1;
+    const assembly = createTurretAssemblyForPath(this.path, color ?? 0x9aa0a6);
     this.parts = assembly.parts;
 
-    assembly.root.position.set(
-      REMOTE_TURRET_ANCHOR.x,
-      REMOTE_TURRET_ANCHOR.y,
-      REMOTE_TURRET_ANCHOR.z
-    );
+    const anchor = vehicleClass?.turretAnchor ?? REMOTE_TURRET_ANCHOR;
+    assembly.root.position.set(anchor.x, anchor.y, anchor.z);
     vehicleRoot.add(assembly.root);
 
     this.progress = 0;
@@ -48,7 +48,7 @@ export class RemoteTurret {
 
     this.effects = new TurretEffectsPool(scene);
 
-    this.evolution = new TurretEvolutionRig(this.parts);
+    this.evolution = new TurretEvolutionRig(this.parts, this.path);
     this.armor = new TurretArmorRig(this.parts);
     this.evolutionStage = 0;
 
@@ -94,6 +94,8 @@ export class RemoteTurret {
     // player's level-10 missile reads as the same big explosion for
     // everyone watching, not just for the shooter.
     const weapon = this.evolution.getDamageConfig();
+    const explosion = getWeaponImpactExplosion(weapon);
+    let exploded = false;
 
     for (const muzzle of this.evolution.getMuzzlePoints()) {
       muzzle.updateWorldMatrix(true, false);
@@ -106,9 +108,12 @@ export class RemoteTurret {
       const endpoint = origin.clone().addScaledVector(forward, VISUAL_TRACER_LENGTH);
 
       this.effects.spawnTracer(origin, endpoint);
-      if (weapon.weaponType === "missile") {
-        this.effects.spawnExplosion(endpoint, PLAYER_MISSILE_EXPLOSION_CONFIG);
-      } else {
+      // One explosion per shot (not per muzzle) keeps twin-barrel heavy
+      // stages from doubling the particle load.
+      if (explosion && !exploded) {
+        this.effects.spawnExplosion(endpoint, explosion);
+        exploded = true;
+      } else if (!explosion) {
         this.effects.spawnImpact(endpoint);
       }
     }
@@ -119,8 +124,8 @@ export class RemoteTurret {
     // durations as the local turret so both players see a comparable-speed
     // transformation.
     const duration = this.targetProgress > this.progress
-      ? TURRET_CONFIG.deployDuration
-      : TURRET_CONFIG.undeployDuration;
+      ? TURRET_CONFIG.deployDuration * this.deployMultiplier
+      : TURRET_CONFIG.undeployDuration * this.deployMultiplier;
 
     this.progress = stepToward(
       this.progress,
@@ -128,8 +133,8 @@ export class RemoteTurret {
       dt / duration
     );
 
-    this.yaw = stepAngle(this.yaw, this.targetYaw, TURRET_CONFIG.rotationSpeed * dt);
-    this.pitch = stepToward(this.pitch, this.targetPitch, TURRET_CONFIG.elevationSpeed * dt);
+    this.yaw = stepAngle(this.yaw, this.targetYaw, TURRET_CONFIG.rotationSpeed * this.trackingMultiplier * dt);
+    this.pitch = stepToward(this.pitch, this.targetPitch, TURRET_CONFIG.elevationSpeed * this.trackingMultiplier * dt);
 
     this.recoil = Math.max(0, this.recoil - dt / TURRET_CONFIG.recoilDuration);
     this.flash = Math.max(0, this.flash - dt / TURRET_CONFIG.muzzleFlashDuration);

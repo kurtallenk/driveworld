@@ -142,9 +142,13 @@ const STEPS = [
   }
 ];
 
+// Extra summary row shown only when driving the Heavy vehicle.
+export const HEAVY_NOTE = ["HEAVY", "Brake earlier &mdash; wider turns, tougher armor"];
+
 export class DrivingTutorial {
-  constructor({ input, mobileControls = null, menu = null } = {}) {
+  constructor({ input, mobileControls = null, menu = null, vehicleClass = "light" } = {}) {
     this.input = input;
+    this.vehicleClass = vehicleClass;
     this.mobileControls = mobileControls;
     this.menu = menu;
     this.active = false;
@@ -279,7 +283,7 @@ export class DrivingTutorial {
 
     if (isLast) {
       const rows = touch ? step.summaryTouch : step.summaryKeys;
-      this.summaryEl.innerHTML = rows
+      this.summaryEl.innerHTML = [...rows, ...(this.vehicleClass === "heavy" ? [HEAVY_NOTE] : [])]
         .map(([control, label]) =>
           `<li>${touch ? touchBtn(control, "chip") : key(control, " dw-tut-key--wide")}<span>${label}</span></li>`)
         .join("");

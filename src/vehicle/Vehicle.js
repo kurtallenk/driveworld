@@ -16,7 +16,11 @@ import { DEFAULT_VEHICLE_TYPE } from "./VehicleConfig.js";
 // the actual construction code.
 
 export class Vehicle {
-  constructor(scene, physics, color, vehicleType = DEFAULT_VEHICLE_TYPE) {
+  // `profile` (optional, from VehicleConfig.js VEHICLE_CLASSES):
+  //   wheelRadius    -- physics wheel radius; wheel art is scaled to match
+  //   evolutionScale -- [x,y,z] scale for the level-based armour rig
+  constructor(scene, physics, color, vehicleType = DEFAULT_VEHICLE_TYPE, profile = {}) {
+    const wheelRadius = profile.wheelRadius ?? 0.36;
     this.physics = physics;
     this.root = new THREE.Group();
     scene.add(this.root);
@@ -57,6 +61,9 @@ export class Vehicle {
     this.wheels = Array.from({ length: 4 }, (_, index) => {
       const inboardSign = index % 2 === 0 ? 1 : -1;
       const wheel = createWheel(wheelGeo, mat, inboardSign);
+      // Wheel art is authored for the light vehicle's 0.36 m radius; scale
+      // it to match the physics radius of larger classes.
+      if (wheelRadius !== 0.36) wheel.scale.setScalar(wheelRadius / 0.36);
       scene.add(wheel);
       return wheel;
     });
@@ -66,7 +73,10 @@ export class Vehicle {
     // accent ring that spins naturally with the wheel's own physics
     // transform (see VehicleEvolution.js's addWheelAccent) -- purely
     // additive, no change to wheel physics/sync().
-    this.evolution = new VehicleEvolutionRig(this.root, this.wheels);
+    this.evolutionRoot = new THREE.Group();
+    if (profile.evolutionScale) this.evolutionRoot.scale.set(...profile.evolutionScale);
+    this.root.add(this.evolutionRoot);
+    this.evolution = new VehicleEvolutionRig(this.evolutionRoot, this.wheels);
     this.currentEvolutionStage = 0;
 
     this.sync();

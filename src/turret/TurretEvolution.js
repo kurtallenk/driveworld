@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { easeOutBack, clamp01 } from "./TurretMath.js";
 import { getTurretEvolutionConfig, MAX_EVOLUTION_STAGE } from "../gameplay/EvolutionConfig.js";
+import { HEAVY_STAGE_BUILDERS } from "./HeavyTurretEvolution.js";
 
 // ---------------------------------------------------------------------------
 // Turret weapon evolution.
@@ -200,10 +201,15 @@ const GATLING_SPIN_SPEED = 14; // rad/s while actively deployed+targeting
 // and manages which weapon stage is currently shown.
 // ---------------------------------------------------------------------------
 export class TurretEvolutionRig {
-  constructor(parts) {
+  // `path`: vehicle class turret path ("light" = original, "heavy" = cannon
+  // path from HeavyTurretEvolution.js). Each path has its own builders and
+  // config table, so progress on one never alters the other.
+  constructor(parts, path = "light") {
     this.parts = parts;
+    this.path = path === "heavy" ? "heavy" : "light";
+    this.builders = this.path === "heavy" ? HEAVY_STAGE_BUILDERS : STAGE_BUILDERS;
     this.mat = getWeaponMaterials();
-    this.built = new Array(STAGE_BUILDERS.length).fill(null);
+    this.built = new Array(this.builders.length).fill(null);
     this.currentStage = 0;
     this.spinAngle = 0;
 
@@ -222,11 +228,11 @@ export class TurretEvolutionRig {
 
     for (let s = 1; s <= target; s++) {
       if (!this.built[s]) {
-        const parent = s === MAX_EVOLUTION_STAGE
+        const parent = s === MAX_EVOLUTION_STAGE && this.path === "light"
           ? this.parts.gunMountPivot // missile pods: don't telescope
           : this.parts.barrelGroup; // everything else rides the barrel group
 
-        const built = STAGE_BUILDERS[s](this.mat);
+        const built = this.builders[s](this.mat);
 
         // Every mesh in a stage group uses one of this rig's shared,
         // module-level materials (getWeaponMaterials() above) -- tag them
@@ -254,7 +260,7 @@ export class TurretEvolutionRig {
     }
 
     if (animate && target !== this.currentStage && target > 0 && this.built[target]) {
-      this.beginReveal(this.built[target].group, getTurretEvolutionConfig(target).animationDuration);
+      this.beginReveal(this.built[target].group, getTurretEvolutionConfig(target, this.path).animationDuration);
     }
 
     this.currentStage = target;
@@ -278,7 +284,7 @@ export class TurretEvolutionRig {
   }
 
   getDamageConfig() {
-    return getTurretEvolutionConfig(this.currentStage);
+    return getTurretEvolutionConfig(this.currentStage, this.path);
   }
 
   onFire() {
@@ -311,6 +317,9 @@ export class TurretEvolutionRig {
         for (const pod of active.pods) pod.scale.setScalar(kick);
       }
     }
+    if (active?.glow) {
+      active.glow.emissiveIntensity = 0.8 + this.fireFlashTimer * 2.2;
+    }
   }
 
   dispose() {
@@ -319,6 +328,7 @@ export class TurretEvolutionRig {
       built.group.traverse(obj => {
         if (obj.geometry) obj.geometry.dispose();
       });
+      built.glow?.dispose();
       built.group.parent?.remove(built.group);
     }
   }

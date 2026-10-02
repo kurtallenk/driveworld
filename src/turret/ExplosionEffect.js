@@ -16,6 +16,7 @@ import * as THREE from "three";
 // ---------------------------------------------------------------------------
 
 export const PLAYER_MISSILE_EXPLOSION_CONFIG = Object.freeze({
+  tier: "missile",
   radius: 2.6,
   duration: 0.55,
   flashDuration: 0.09,
@@ -38,7 +39,107 @@ export const PLAYER_MISSILE_EXPLOSION_CONFIG = Object.freeze({
   shockwaveOpacity: 0.75
 });
 
+// Heavy Vehicle cannon shells (see EvolutionConfig.js
+// HEAVY_TURRET_EVOLUTION_CONFIG `impact`). Smaller than the missile so a
+// steady cannon rate never floods the screen.
+export const HEAVY_SHELL_EXPLOSION_CONFIG = Object.freeze({
+  tier: "shell",
+  radius: 1.25,
+  duration: 0.4,
+  flashDuration: 0.07,
+  shockwaveRadius: 2.1,
+  shockwaveDuration: 0.28,
+  particleCount: 9,
+  debrisCount: 3,
+  smokeCount: 3,
+  gravity: 7.5,
+  particleSpeedMin: 2.0,
+  particleSpeedMax: 4.5,
+  debrisSpeedMin: 1.6,
+  debrisSpeedMax: 3.4,
+  smokeRiseSpeedMin: 0.5,
+  smokeRiseSpeedMax: 1.1,
+  groundDust: true,
+  scorch: false,
+  groundScale: 0.6,
+  coreOpacity: 0.95,
+  shockwaveOpacity: 0.6
+});
+
+export const HEAVY_MORTAR_EXPLOSION_CONFIG = Object.freeze({
+  tier: "shell",
+  ...HEAVY_SHELL_EXPLOSION_CONFIG,
+  radius: 1.9,
+  duration: 0.5,
+  shockwaveRadius: 3.2,
+  shockwaveDuration: 0.34,
+  particleCount: 13,
+  debrisCount: 5,
+  smokeCount: 5,
+  particleSpeedMax: 5.5,
+  scorch: true,
+  groundScale: 0.85,
+  shockwaveOpacity: 0.7
+});
+
+export const HEAVY_RAIL_EXPLOSION_CONFIG = Object.freeze({
+  tier: "missile",
+  ...PLAYER_MISSILE_EXPLOSION_CONFIG,
+  radius: 2.4,
+  shockwaveRadius: 4.6,
+  particleCount: 16,
+  debrisCount: 6,
+  smokeCount: 5
+});
+
+// Destroyed vehicles (player / remote / regular enemies).
+export const VEHICLE_EXPLOSION_CONFIG = Object.freeze({
+  ...PLAYER_MISSILE_EXPLOSION_CONFIG,
+  tier: "vehicle",
+  radius: 3.2,
+  duration: 0.75,
+  flashDuration: 0.12,
+  shockwaveRadius: 6,
+  shockwaveDuration: 0.5,
+  particleCount: 22,
+  debrisCount: 10,
+  smokeCount: 8,
+  debrisSpeedMax: 6,
+  groundScale: 1.3
+});
+
+// Boss destruction: the biggest tier.
+export const BOSS_EXPLOSION_CONFIG = Object.freeze({
+  ...VEHICLE_EXPLOSION_CONFIG,
+  tier: "boss",
+  radius: 7.5,
+  duration: 1.15,
+  flashDuration: 0.18,
+  shockwaveRadius: 13,
+  shockwaveDuration: 0.8,
+  particleCount: 36,
+  debrisCount: 14,
+  smokeCount: 12,
+  particleSpeedMax: 11,
+  debrisSpeedMax: 8,
+  groundScale: 1.8
+});
+
+// Single source of truth for "what does this weapon's hit look like".
+// Returns an explosion config, or null for the small spark impact.
+export function getWeaponImpactExplosion(weapon) {
+  if (!weapon) return null;
+  if (weapon.weaponType === "missile") return PLAYER_MISSILE_EXPLOSION_CONFIG;
+  switch (weapon.impact) {
+    case "shell": return HEAVY_SHELL_EXPLOSION_CONFIG;
+    case "mortar": return HEAVY_MORTAR_EXPLOSION_CONFIG;
+    case "rail": return HEAVY_RAIL_EXPLOSION_CONFIG;
+    default: return null;
+  }
+}
+
 export const APEX_ROCKET_EXPLOSION_CONFIG = Object.freeze({
+  tier: "boss",
   radius: 6.5,
   duration: 0.95,
   flashDuration: 0.14,
@@ -62,6 +163,7 @@ export const APEX_ROCKET_EXPLOSION_CONFIG = Object.freeze({
 });
 
 export const APEX_ROCKET_LAUNCH_FLASH_CONFIG = Object.freeze({
+  tier: "impact",
   radius: 1.15,
   duration: 0.16,
   flashDuration: 0.1,
@@ -170,61 +272,67 @@ class ExplosionParticleSet {
         shared.particleGeometry,
         (i % 3 === 0 ? emberMaterial : particleMaterial).clone()
       );
-      const dir = randomDirection(new THREE.Vector3());
-      const speed = randomRange(config.particleSpeedMin ?? 2, config.particleSpeedMax ?? 6);
-      mesh.position.set(0, 0.2, 0);
-      mesh.scale.setScalar(randomRange(0.65, 1.45));
-      mesh.rotation.set(Math.random(), Math.random(), Math.random());
       group.add(mesh);
-      this.particles.push({
-        mesh,
-        velocity: dir.multiplyScalar(speed),
-        spin: new THREE.Vector3(
-          randomRange(-9, 9),
-          randomRange(-9, 9),
-          randomRange(-9, 9)
-        )
-      });
+      this.particles.push({ mesh, velocity: new THREE.Vector3(), spin: new THREE.Vector3() });
     }
 
     for (let i = 0; i < (config.debrisCount ?? 0); i++) {
       const mesh = new THREE.Mesh(shared.debrisGeometry, debrisMaterial.clone());
-      const dir = randomDirection(new THREE.Vector3());
-      const speed = randomRange(config.debrisSpeedMin ?? 2, config.debrisSpeedMax ?? 5);
-      mesh.position.set(0, 0.15, 0);
-      mesh.scale.setScalar(randomRange(0.7, 1.5));
-      mesh.rotation.set(Math.random(), Math.random(), Math.random());
       group.add(mesh);
-      this.debris.push({
-        mesh,
-        velocity: dir.multiplyScalar(speed),
-        spin: new THREE.Vector3(
-          randomRange(-7, 7),
-          randomRange(-7, 7),
-          randomRange(-7, 7)
-        )
-      });
+      this.debris.push({ mesh, velocity: new THREE.Vector3(), spin: new THREE.Vector3() });
     }
 
     for (let i = 0; i < (config.smokeCount ?? 0); i++) {
       const mesh = new THREE.Mesh(shared.smokeGeometry, smokeMaterial.clone());
-      mesh.position.set(
-        randomRange(-0.25, 0.25),
-        randomRange(0.05, 0.35),
-        randomRange(-0.25, 0.25)
-      );
-      mesh.scale.setScalar(randomRange(0.7, 1.15));
       group.add(mesh);
-      this.smoke.push({
-        mesh,
-        velocity: new THREE.Vector3(
-          randomRange(-0.35, 0.35),
-          randomRange(config.smokeRiseSpeedMin ?? 0.5, config.smokeRiseSpeedMax ?? 1.5),
-          randomRange(-0.35, 0.35)
-        ),
-        phase: Math.random() * Math.PI * 2,
-        baseScale: mesh.scale.x
-      });
+      this.smoke.push({ mesh, velocity: new THREE.Vector3(), phase: 0, baseScale: 1 });
+    }
+
+    // The template materials were only cloned from; free them now.
+    particleMaterial.dispose();
+    emberMaterial.dispose();
+    debrisMaterial.dispose();
+    smokeMaterial.dispose();
+
+    this.reset();
+  }
+
+  get count() {
+    return this.particles.length + this.debris.length + this.smoke.length;
+  }
+
+  // Re-randomises every particle in place so a pooled explosion can be
+  // replayed without allocating new meshes/materials.
+  reset() {
+    const config = this.config;
+    for (const p of this.particles) {
+      randomDirection(p.velocity).multiplyScalar(
+        randomRange(config.particleSpeedMin ?? 2, config.particleSpeedMax ?? 6)
+      );
+      p.spin.set(randomRange(-9, 9), randomRange(-9, 9), randomRange(-9, 9));
+      p.mesh.position.set(0, 0.2, 0);
+      p.mesh.scale.setScalar(randomRange(0.65, 1.45));
+      p.mesh.rotation.set(Math.random(), Math.random(), Math.random());
+    }
+    for (const d of this.debris) {
+      randomDirection(d.velocity).multiplyScalar(
+        randomRange(config.debrisSpeedMin ?? 2, config.debrisSpeedMax ?? 5)
+      );
+      d.spin.set(randomRange(-7, 7), randomRange(-7, 7), randomRange(-7, 7));
+      d.mesh.position.set(0, 0.15, 0);
+      d.mesh.scale.setScalar(randomRange(0.7, 1.5));
+      d.mesh.rotation.set(Math.random(), Math.random(), Math.random());
+    }
+    for (const m of this.smoke) {
+      m.mesh.position.set(randomRange(-0.25, 0.25), randomRange(0.05, 0.35), randomRange(-0.25, 0.25));
+      m.baseScale = randomRange(0.7, 1.15);
+      m.mesh.scale.setScalar(m.baseScale);
+      m.velocity.set(
+        randomRange(-0.35, 0.35),
+        randomRange(config.smokeRiseSpeedMin ?? 0.5, config.smokeRiseSpeedMax ?? 1.5),
+        randomRange(-0.35, 0.35)
+      );
+      m.phase = Math.random() * Math.PI * 2;
     }
   }
 
@@ -344,6 +452,23 @@ export class Explosion {
     const scale = Math.max(0.25, this.config.groundScale ?? 1);
     if (this.groundRing) this.groundRing.scale.setScalar(scale);
     if (this.scorch) this.scorch.scale.setScalar(scale);
+
+    // Template used for pooling (ExplosionManager keys pools by it).
+    this.sourceConfig = config;
+    this.particleCount = this.particles.count;
+  }
+
+  // Replay this (pooled) explosion at a new position.
+  reset(position) {
+    this.age = 0;
+    this.group.position.copy(position);
+    this.group.visible = true;
+    this.particles.reset();
+    this.update(0);
+  }
+
+  get finished() {
+    return this.age >= Math.max(0.05, this.config.duration ?? 0.6);
   }
 
   update(dt) {

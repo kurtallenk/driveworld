@@ -220,6 +220,12 @@ export class MultiplayerClient {
       url.searchParams.set("name", this.playerName);
     }
 
+    // Vehicle class (light | heavy) so the server can relay the right body
+    // to other players and apply heavy armor to server-side damage.
+    if (this.game?.vehicleClass?.id) {
+      url.searchParams.set("vehicle", this.game.vehicleClass.id);
+    }
+
     this.status.textContent = "Connecting to multiplayer…";
 
     const socket = new WebSocket(url);

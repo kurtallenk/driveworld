@@ -4,6 +4,7 @@ import {
   VEHICLE_CANNON_MATERIAL,
   VEHICLE_VEHICLE_CONTACT
 } from "./CollisionGroups.js";
+import { LIGHT_HANDLING } from "./VehicleConfig.js";
 
 /*
  * Respawn system
@@ -58,20 +59,23 @@ const FALLBACK_DISTANCES = [
 ];
 
 export class VehiclePhysics {
-  constructor(world) {
+  // `handling` is a vehicle-class profile (see VehicleConfig.js). The
+  // default, LIGHT_HANDLING, is exactly the original hard-coded tuning.
+  constructor(world, handling = LIGHT_HANDLING) {
     this.world = world;
+    this.handling = handling;
 
     this.body = new CANNON.Body({
-      mass: 1050,
+      mass: handling.mass,
       linearDamping: 0.025,
-      angularDamping: 0.35,
+      angularDamping: handling.angularDamping,
       material: VEHICLE_CANNON_MATERIAL
     });
 
     // The collider sits above the center of mass for prototype stability.
     this.body.addShape(
-      new CANNON.Box(new CANNON.Vec3(0.9, 0.3, 2)),
-      new CANNON.Vec3(0, 0.15, 0)
+      new CANNON.Box(new CANNON.Vec3(...handling.chassisHalfExtents)),
+      new CANNON.Vec3(0, handling.chassisOffsetY, 0)
     );
 
     // Collide with the static world and remote players.
@@ -86,14 +90,9 @@ export class VehiclePhysics {
       indexForwardAxis: 2
     });
 
-    for (const [x, z, isFrontWheel] of [
-      [-0.95, 1.35, true],
-      [0.95, 1.35, true],
-      [-0.95, -1.35, false],
-      [0.95, -1.35, false]
-    ]) {
+    for (const [x, z, isFrontWheel] of handling.wheelPositions) {
       this.vehicle.addWheel({
-        radius: 0.36,
+        radius: handling.wheelRadius,
         directionLocal: new CANNON.Vec3(0, -1, 0),
         axleLocal: new CANNON.Vec3(-1, 0, 0),
         chassisConnectionPointLocal: new CANNON.Vec3(x, 0, z),
@@ -149,8 +148,10 @@ export class VehiclePhysics {
     // Manual supplies an actual per-driven-wheel force in newtons.
     const driveForcePerWheel =
       Number.isFinite(control.driveForcePerWheel)
-        ? control.driveForcePerWheel
-        : control.drive * 1800;
+        // Manual drivetrain force is tuned for the light car; scale it by
+        // this class's engine ratio (exactly 1 for LIGHT).
+        ? control.driveForcePerWheel * (this.handling.driveForce / LIGHT_HANDLING.driveForce)
+        : control.drive * this.handling.driveForce;
 
     for (let i = 0; i < 4; i++) {
       const wheel = this.vehicle.wheelInfos[i];
@@ -178,8 +179,8 @@ export class VehiclePhysics {
       );
 
       this.vehicle.setBrake(
-        control.brake * 35 +
-          (i >= 2 ? control.handbrake * 65 : 0),
+        control.brake * this.handling.brakeForce +
+          (i >= 2 ? control.handbrake * this.handling.handbrakeForce : 0),
         i
       );
     }

@@ -1,3 +1,4 @@
+import { BOSS_EXPLOSION_CONFIG, VEHICLE_EXPLOSION_CONFIG } from "./ExplosionEffect.js";
 import * as THREE from "three";
 import {
   Target,
@@ -231,6 +232,8 @@ export class TargetSystem {
     for (const [id, target] of this.byId) {
       if (seen.has(id)) continue;
 
+      // Killed (not merely despawned): same destruction burst as offline.
+      if (target.alive === false || target.health <= 0) this.spawnDeathExplosion(target);
       target.dispose();
       this.byId.delete(id);
     }
@@ -719,6 +722,7 @@ export class TargetSystem {
     if (destroyed) {
       const kind = target.kind;
 
+      this.spawnDeathExplosion(target);
       target.dispose();
 
       if (kind === "boss") {
@@ -741,6 +745,15 @@ export class TargetSystem {
   // -------------------------------------------------------------------------
   // DISPOSE
   // -------------------------------------------------------------------------
+  // Destroyed enemy burst: "boss" tier for the boss, "vehicle" for others.
+  spawnDeathExplosion(target) {
+    if (!target?.position) return;
+    this.effectsPool.spawnExplosion(
+      target.position.clone(),
+      target.kind === "boss" ? BOSS_EXPLOSION_CONFIG : VEHICLE_EXPLOSION_CONFIG
+    );
+  }
+
   dispose() {
     for (const target of this.targets) {
       target.dispose();

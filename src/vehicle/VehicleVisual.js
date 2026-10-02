@@ -721,6 +721,8 @@ export function createWheel(geo, mat, inboardSign) {
 // ---------------------------------------------------------------------------
 export function buildVehicleBody(root, color, vehicleType = DEFAULT_VEHICLE_TYPE) {
   switch (vehicleType) {
+    case "hauler":
+      return buildHaulerBody(root, color);
     case "sedan":
     default:
       return buildSedanBody(root, color);
@@ -944,6 +946,183 @@ function buildSedanBody(root, color) {
     );
   }
 
+  const cockpit = buildCockpit(root, mat);
+
+  return { mat, exhaustPoints, ...cockpit };
+}
+
+// ---------------------------------------------------------------------------
+// Armored Hauler (Heavy Vehicle class)
+// ---------------------------------------------------------------------------
+// Physics footprint (VehicleConfig.js HEAVY_HANDLING): half-extents
+// 1.08/0.38/2.3 at y+0.2, wheels at x=+-1.12, z=+1.55/-1.5, radius 0.44.
+// Silhouette goals so it reads as "heavy" at a glance, distinct from the
+// sedan: tall slab-sided armored superstructure, flat roof deck carrying the
+// cannon turret further back, sloped glacis hood, bull bar, armored wheel
+// boxes, narrow caged windshield, side skirts with bolts, roof light bar.
+// Same material set as the sedan so paint colour / evolution armour / wreck
+// visuals keep working unchanged.
+function buildHaulerBody(root, color) {
+  const mat = createVehicleMaterials(color);
+
+  // ---- Lower hull ------------------------------------------------------
+  addBox(root, [2.06, 0.5, 4.5], [0, 0.18, 0], mat.paint);
+  // Belly pan / skid plate.
+  addBox(root, [1.8, 0.08, 4.1], [0, -0.1, 0], mat.gunmetal);
+  addBox(root, [1.9, 0.08, 0.5], [0, -0.06, 2.2], mat.gunmetal, [-0.35, 0, 0]);
+
+  // ---- Sloped glacis hood ---------------------------------------------
+  addBox(root, [2.0, 0.24, 1.32], [0, 0.52, 1.6], mat.paint, [0.08, 0, 0]);
+  // Raised armour ridge + vent slots on the hood.
+  addBox(root, [0.6, 0.06, 1.0], [0, 0.66, 1.55], mat.paintLower, [0.08, 0, 0]);
+  for (let i = 0; i < 4; i++) {
+    addBox(root, [0.5, 0.012, 0.05], [0, 0.695, 1.25 + i * 0.16], mat.dark, [0.08, 0, 0]);
+  }
+
+  // ---- Armoured superstructure (cab + rear module, one slab) ---------
+  addBox(root, [1.96, 0.9, 3.05], [0, 0.88, -0.5], mat.paint);
+  // Roof deck (turret sits on it, see VEHICLE_CLASSES.heavy.turretAnchor).
+  addBox(root, [1.88, 0.1, 2.95], [0, 1.38, -0.5], mat.paintLower);
+  // Turret ring collar so the hatch reads as a heavy mount.
+  addMesh(root, new THREE.CylinderGeometry(0.62, 0.66, 0.08, 24), mat.gunmetal, [0, 1.46, -0.8]);
+  // Horizontal armour belt seam along both sides.
+  for (const side of [-1, 1]) {
+    addBox(root, [0.03, 0.05, 3.0], [side * 0.985, 0.95, -0.5], mat.dark);
+    // Bolted appliqué plates.
+    for (const z of [-1.6, -0.9, -0.2]) {
+      addBox(root, [0.05, 0.36, 0.6], [side * 1.0, 0.68, z], mat.cladding);
+      for (const dy of [-0.13, 0.13]) {
+        for (const dz of [-0.22, 0.22]) {
+          addMesh(
+            root,
+            new THREE.CylinderGeometry(0.02, 0.02, 0.02, 8),
+            mat.gunmetal,
+            [side * 1.03, 0.68 + dy, z + dz],
+            [0, 0, Math.PI / 2]
+          );
+        }
+      }
+    }
+  }
+
+  // ---- Windshield: narrow armoured glass behind a cage ----------------
+  addBox(root, [1.86, 0.48, 0.06], [0, 1.08, 1.0], mat.dark, [-0.22, 0, 0]);
+  addMesh(
+    root,
+    new THREE.PlaneGeometry(1.66, 0.36),
+    mat.glass,
+    [0, 1.09, 1.04],
+    [-0.22, 0, 0]
+  );
+  for (const x of [-0.42, 0, 0.42]) {
+    addBox(root, [0.05, 0.46, 0.04], [x, 1.09, 1.07], mat.gunmetal, [-0.22, 0, 0]);
+  }
+  // Visor brow.
+  addBox(root, [1.94, 0.06, 0.24], [0, 1.34, 1.06], mat.paintLower);
+  // Side vision slits.
+  for (const side of [-1, 1]) {
+    const rotY = side * Math.PI / 2;
+    addMesh(root, new THREE.PlaneGeometry(0.62, 0.22), mat.glass, [side * 0.985, 1.12, 0.55], [0, rotY, 0]);
+    addBox(root, [0.03, 0.03, 0.66], [side * 0.995, 1.24, 0.55], mat.gunmetal);
+    addBox(root, [0.03, 0.03, 0.66], [side * 0.995, 1.0, 0.55], mat.gunmetal);
+    // Door outline + handle.
+    addBox(root, [0.02, 0.6, 0.02], [side * 0.99, 0.82, 0.92], mat.dark);
+    addBox(root, [0.02, 0.6, 0.02], [side * 0.99, 0.82, 0.12], mat.dark);
+    addBox(root, [0.04, 0.04, 0.16], [side * 1.0, 0.86, 0.3], mat.gunmetal);
+    // Mirrors (shared camera-pod design), moved out to the wider cab.
+    createMirror(mat, side, root).position.set(side * 1.12, 1.1, 0.92);
+  }
+
+  // ---- Armoured wheel boxes + side skirts ----------------------------
+  for (const side of [-1, 1]) {
+    for (const z of [1.55, -1.5]) {
+      const g = group(root, [side * 1.1, 0.5, z]);
+      addBox(g, [0.34, 0.1, 1.16], [0, 0.04, 0], mat.cladding);
+      addBox(g, [0.34, 0.09, 0.32], [0, -0.06, 0.62], mat.cladding, [-0.6, 0, 0]);
+      addBox(g, [0.34, 0.09, 0.32], [0, -0.06, -0.62], mat.cladding, [0.6, 0, 0]);
+      addBox(g, [0.04, 0.12, 1.1], [side * 0.17, -0.02, 0], mat.gunmetal);
+    }
+    // Skirt between the wheels.
+    addBox(root, [0.1, 0.34, 1.7], [side * 1.07, 0.12, 0.02], mat.cladding);
+    for (let i = -2; i <= 2; i++) {
+      addBox(root, [0.11, 0.04, 0.12], [side * 1.08, 0.2, i * 0.34], mat.dark);
+    }
+    // Side step.
+    addBox(root, [0.22, 0.04, 0.6], [side * 1.12, -0.02, 0.5], mat.gunmetal);
+  }
+
+  // ---- Front: grille, headlights, bull bar ---------------------------
+  createGrille(mat, root, 2.26).position.set(0, 0.32, 2.26);
+  for (const side of [-1, 1]) {
+    createHeadlightAssembly(mat, side, root).position.set(side * 0.74, 0.36, 2.27);
+  }
+  // Bull bar: two horizontal tubes + uprights.
+  const tube = new THREE.CylinderGeometry(0.05, 0.05, 2.1, 12);
+  addMesh(root, tube, mat.gunmetal, [0, 0.0, 2.48], [0, 0, Math.PI / 2]);
+  addMesh(root, tube, mat.gunmetal, [0, 0.42, 2.44], [0, 0, Math.PI / 2]);
+  for (const x of [-0.95, -0.32, 0.32, 0.95]) {
+    addMesh(root, new THREE.CylinderGeometry(0.045, 0.045, 0.5, 10), mat.gunmetal, [x, 0.21, 2.46]);
+  }
+  // Tow hooks.
+  for (const side of [-1, 1]) {
+    addMesh(root, new THREE.TorusGeometry(0.06, 0.018, 6, 12), mat.warnRed, [side * 0.6, -0.08, 2.34], [0, Math.PI / 2, 0]);
+  }
+
+  // ---- Roof: light bar, antenna, stowage ------------------------------
+  addBox(root, [1.3, 0.08, 0.12], [0, 1.47, 0.75], mat.dark);
+  for (let i = -2; i <= 2; i++) {
+    addBox(root, [0.2, 0.05, 0.02], [i * 0.25, 1.47, 0.815], mat.lampWarm);
+  }
+  addMesh(root, new THREE.CylinderGeometry(0.012, 0.012, 1.0, 6), mat.dark, [0.78, 1.93, -1.6]);
+  addMesh(root, new THREE.CylinderGeometry(0.03, 0.03, 0.06, 8), mat.gunmetal, [0.78, 1.46, -1.6]);
+  for (const side of [-1, 1]) {
+    addBox(root, [0.32, 0.18, 0.7], [side * 0.72, 1.52, -1.65], mat.cladding);
+    addBox(root, [0.34, 0.02, 0.06], [side * 0.72, 1.6, -1.65], mat.gunmetal);
+    // Roof grab rails.
+    addBox(root, [0.04, 0.04, 2.3], [side * 0.92, 1.46, -0.55], mat.gunmetal);
+  }
+
+  // ---- Rear: armoured door, lights, bumper, exhausts -----------------
+  addBox(root, [1.2, 0.72, 0.05], [0, 0.85, -2.03], mat.paintLower);
+  addBox(root, [0.04, 0.72, 0.06], [0, 0.85, -2.05], mat.dark);
+  addBox(root, [0.2, 0.05, 0.06], [0.25, 0.85, -2.07], mat.gunmetal);
+  // Rear vision slit.
+  addMesh(root, new THREE.PlaneGeometry(0.7, 0.12), mat.glass, [0, 1.12, -2.06], [0, Math.PI, 0]);
+  for (const side of [-1, 1]) {
+    createTaillightAssembly(mat, side, root).position.set(side * 0.78, 0.36, -2.32);
+  }
+  addBox(root, [1.2, 0.025, 0.02], [0, 0.48, -2.265], mat.tailLamp);
+  addBox(root, [2.1, 0.22, 0.2], [0, 0.0, -2.33], mat.gunmetal);
+  for (const side of [-1, 1]) {
+    addBox(root, [0.1, 0.04, 0.02], [side * 0.9, 0.0, -2.44], mat.indicator);
+  }
+
+  const exhaustPoints = [];
+  for (const side of [-1, 1]) {
+    const position = [side * 0.62, -0.08, -2.3];
+    addMesh(root, new THREE.CylinderGeometry(0.075, 0.07, 0.14, 14), mat.gunmetal, position, [Math.PI / 2, 0, 0]);
+    addMesh(
+      root,
+      new THREE.CylinderGeometry(0.05, 0.05, 0.02, 14),
+      mat.dark,
+      [position[0], position[1], position[2] - 0.07],
+      [Math.PI / 2, 0, 0]
+    );
+    exhaustPoints.push(new THREE.Vector3(position[0], position[1], position[2] - 0.12));
+  }
+
+  // ---- Cockpit: same interior as the sedan, raised/moved into the cab --
+  const cockpit = buildCockpit(group(root, [0, 0.08, 0.16]), mat);
+
+  return { mat, exhaustPoints, ...cockpit };
+}
+
+// ---------------------------------------------------------------------------
+// Shared cockpit (seats, dash, steering wheel, canvas displays, driver eye).
+// Built into `root` exactly as the sedan always had it; the heavy hauler
+// passes an offset group so the same interior sits in its taller cab.
+// ---------------------------------------------------------------------------
+function buildCockpit(root, mat) {
   // ---- Interior / cockpit -------------------------------------------------
   createSeat(mat, -0.43, root, true);
   createSeat(mat, 0.43, root, true);
@@ -1048,8 +1227,6 @@ function buildSedanBody(root, color) {
   addBox(root, [0.18, 0.01, 0.18], [0, 0.528, -0.08], mat.dark, [-Math.PI / 2.4, 0, 0]);
 
   return {
-    mat,
-    exhaustPoints,
     driverEye,
     steeringWheel,
     dashboardCanvas,
