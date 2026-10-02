@@ -9,6 +9,8 @@ import { PLAYER_CONFIG } from "../turret/TurretConfig.js";
 // ---------------------------------------------------------------------------
 export class PlayerHealth {
   constructor() {
+    // Vehicle-class armor multiplier on incoming damage (see Game.js).
+    this.damageTakenMultiplier = 1;
     this.maxHealth = PLAYER_CONFIG.maxHealth;
     this.health = this.maxHealth;
     this.dead = false;
@@ -71,6 +73,9 @@ export class PlayerHealth {
     // while networked -- see that method and requirement #2/#10/#11.
     if (this.networked) return;
     if (this.dead || !Number.isFinite(amount) || amount <= 0) return;
+
+    // Vehicle-class armor (1 = original). Set by Game.js.
+    amount *= Number.isFinite(this.damageTakenMultiplier) ? this.damageTakenMultiplier : 1;
 
     this.health = Math.max(0, this.health - amount);
     this.onDamage?.(amount, source);

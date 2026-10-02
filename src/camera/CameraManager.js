@@ -461,6 +461,33 @@ export class CameraManager {
     this.reset();
   }
 
+  // Brief, subtle positional shake from nearby explosions (see
+  // ExplosionManager). Capped, decays in ~0.3 s, skipped entirely when the
+  // camera-vibration setting is off or the OS asks for reduced motion.
+  addExplosionShake(amount) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (this.settings?.vibrationEnabled === false) return;
+    if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+    this.explosionShake = Math.min(0.8, Math.max(this.explosionShake ?? 0, amount));
+  }
+
+  applyExplosionShake(dt, timeSeconds) {
+    if (!this.lastShakeOffset) this.lastShakeOffset = new THREE.Vector3();
+    const s = this.explosionShake ?? 0;
+    if (s <= 0.002) {
+      this.explosionShake = 0;
+      return;
+    }
+    this.explosionShake = s * Math.exp(-11 * dt);
+    const m = 0.09 * s;
+    this.lastShakeOffset.set(
+      Math.sin(timeSeconds * 61) * m,
+      Math.sin(timeSeconds * 79 + 1.3) * m * 0.8,
+      Math.sin(timeSeconds * 47 + 2.1) * m * 0.5
+    );
+    this.camera.position.add(this.lastShakeOffset);
+  }
+
   notifyImpact(impactSpeed) {
     if (!Number.isFinite(impactSpeed) || impactSpeed < 1.5) return;
 
@@ -492,6 +519,8 @@ export class CameraManager {
 
     this.headOffset.set(0, 0, 0);
     this.impactAmount = 0;
+    this.explosionShake = 0;
+    this.lastShakeOffset?.set(0, 0, 0);
     this.turboActive = false;
     this.turboFovBoost = 0;
 
@@ -636,6 +665,12 @@ export class CameraManager {
   ) {
     dt = boundedNumber(dt, 0, 0, 0.1);
 
+    // Undo last frame's explosion shake so smoothing never accumulates it.
+    if (this.lastShakeOffset) {
+      this.camera.position.sub(this.lastShakeOffset);
+      this.lastShakeOffset.set(0, 0, 0);
+    }
+
     this.impactAmount *= Math.exp(-7 * dt);
 
     // Subtle FOV widening while turbo is active -- smoothed both ways so
@@ -691,6 +726,7 @@ export class CameraManager {
       this.chase.update(this.chaseTarget, dt);
       this.obstacleAvoidance.resolve(this.camera, vehicle);
       this.camera.lookAt(this.chase.lookPoint);
+      this.applyExplosionShake(dt, timeSeconds);
       return;
     }
 
@@ -774,5 +810,6 @@ export class CameraManager {
 
     this.camera.up.set(0, 1, 0).applyQuaternion(this.rotation);
     this.camera.lookAt(this.target);
+    this.applyExplosionShake(dt, timeSeconds);
   }
 }

@@ -100,6 +100,53 @@ export const TURRET_EVOLUTION_CONFIG = [
   }
 ];
 
-export function getTurretEvolutionConfig(stage) {
-  return TURRET_EVOLUTION_CONFIG[clampStage(stage)];
+// Heavy Vehicle cannon path. Separate table so the two vehicles' weapon
+// progressions can never overwrite each other. Same level milestones (level
+// is shared per session), different weapons: slower, harder-hitting shells
+// that burst on impact (`impact`), ~1.2x the light path's sustained DPS to
+// offset the slower turret traverse/deploy. Highest per-hit damage
+// (20 x 1.4 level bonus x 6.4 = 179) stays under the server's 200 cap.
+export const HEAVY_TURRET_EVOLUTION_CONFIG = [
+  {
+    stage: 0, level: 1, name: "Breacher Cannon", label: "BREACHER CANNON",
+    weaponType: "cannon", mounts: 1, barrelsPerMount: 1, impact: "shell",
+    fireRateMultiplier: 0.5, damageMultiplier: 2.4, animationDuration: 1.8
+  },
+  {
+    stage: 1, level: 5, name: "Twin Breacher", label: "TWIN BREACHER",
+    weaponType: "twinCannon", mounts: 2, barrelsPerMount: 1, impact: "shell",
+    fireRateMultiplier: 0.45, damageMultiplier: 1.45, animationDuration: 2.0
+  },
+  {
+    stage: 2, level: 10, name: "Siege Autocannon", label: "SIEGE AUTOCANNON",
+    weaponType: "autocannon", mounts: 1, barrelsPerMount: 1, impact: "shell",
+    fireRateMultiplier: 0.85, damageMultiplier: 1.85, animationDuration: 2.2
+  },
+  {
+    stage: 3, level: 15, name: "Twin Siege Autocannon", label: "TWIN SIEGE AUTOCANNON",
+    weaponType: "twinAutocannon", mounts: 2, barrelsPerMount: 1, impact: "shell",
+    fireRateMultiplier: 0.8, damageMultiplier: 1.35, animationDuration: 2.4
+  },
+  {
+    stage: 4, level: 20, name: "Mortar Battery", label: "MORTAR BATTERY",
+    weaponType: "mortar", mounts: 2, barrelsPerMount: 1, impact: "mortar",
+    fireRateMultiplier: 0.6, damageMultiplier: 2.25, animationDuration: 2.7
+  },
+  {
+    stage: 5, level: 25, name: "Titan Rail Cannon", label: "TITAN RAIL CANNON",
+    weaponType: "rail", mounts: 1, barrelsPerMount: 1, impact: "rail",
+    fireRateMultiplier: 0.35, damageMultiplier: 6.4, animationDuration: 3.0
+  }
+];
+
+export const TURRET_EVOLUTION_PATHS = Object.freeze({
+  light: TURRET_EVOLUTION_CONFIG,
+  heavy: HEAVY_TURRET_EVOLUTION_CONFIG
+});
+
+// `path` is the vehicle class's turretPath ("light" | "heavy"); anything
+// else falls back to the original light path.
+export function getTurretEvolutionConfig(stage, path = "light") {
+  const table = TURRET_EVOLUTION_PATHS[path] ?? TURRET_EVOLUTION_CONFIG;
+  return table[clampStage(stage)];
 }

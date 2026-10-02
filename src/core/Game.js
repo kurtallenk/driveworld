@@ -15,6 +15,7 @@ import { WheelCalibrationWizard } from "../ui/WheelCalibrationWizard.js";
 import { ControllerCalibrationWizard } from "../ui/ControllerCalibrationWizard.js";
 import { MobileControls } from "../ui/MobileControls.js";
 import { DrivingTutorial } from "../ui/DrivingTutorial.js";
+import { getVehicleClass } from "../vehicle/VehicleConfig.js";
 import { ItemHotbar } from "../ui/ItemHotbar.js";
 import { KeyboardPanelControls } from "../ui/KeyboardPanelControls.js";
 import { HudVisibility, HUD_MODE_LABELS } from "../ui/HudVisibility.js";
@@ -41,6 +42,8 @@ import { InventorySystem } from "../gameplay/InventorySystem.js";
 import { InteractionSystem } from "../gameplay/InteractionSystem.js";
 import { AutoLootController } from "../gameplay/AutoLoot.js";
 import { getItem } from "../gameplay/ItemDatabase.js";
+import { getExplosionManager } from "../turret/ExplosionManager.js";
+import { VEHICLE_EXPLOSION_CONFIG } from "../turret/ExplosionEffect.js";
 
 // Tachometer scale for the dashboard's RPM arc. Redline comes straight
 // from the manual drivetrain's own config, so the gauge always agrees
@@ -56,7 +59,11 @@ const PLAYER_COLORS = [
 const FIXED_DT = 1 / 60;
 
 export class Game {
-  constructor(canvas) {
+  // options.vehicleClass: "light" (original, default) | "heavy". Chosen on
+  // the start screen (see main.js / ui/VehicleSelect.js).
+  constructor(canvas, options = {}) {
+    this.vehicleClass = getVehicleClass(options.vehicleClass);
+    document.body.dataset.vehicleClass = this.vehicleClass.id;
     this.presentationSettings = loadPresentationSettings();
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -144,10 +151,11 @@ this.audio.effectsVolume =
     this.player = {
       playerId: "local",
       vehicleId: "local-car",
-      vehicleColor: PLAYER_COLORS[0]
+      vehicleColor: PLAYER_COLORS[0],
+      vehicleClass: this.vehicleClass.id
     };
 
-    this.vehiclePhysics = new VehiclePhysics(this.physics);
+    this.vehiclePhysics = new VehiclePhysics(this.physics, this.vehicleClass.handling);
 this.vehiclePhysics.body.addEventListener("collide", event => {
   const impactSpeed = Math.abs(
     event.contact.getImpactVelocityAlongNormal()
@@ -163,12 +171,25 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
 });
 
     this.vehicle = new Vehicle(
-      this.scene, this.vehiclePhysics, this.player.vehicleColor
+      this.scene, this.vehiclePhysics, this.player.vehicleColor,
+      this.vehicleClass.bodyType,
+      {
+        wheelRadius: this.vehicleClass.handling.wheelRadius,
+        evolutionScale: this.vehicleClass.evolutionScale
+      }
     );
 
     // Wreck visuals (charred materials, smoke/spark/flash, flickering
     // lights) driven by playerHealth.onDeath/onRespawn below.
     this.vehicleDestruction = new VehicleDestruction(this.scene, this.vehicle.root);
+
+    // Scene-wide explosion manager (pooling, caps, light flash). Shakes are
+    // attenuated by distance to the player's car and suppressed for
+    // prefers-reduced-motion inside the manager; the camera additionally
+    // honours the existing "camera vibration" setting.
+    this.explosions = getExplosionManager(this.scene);
+    this.explosions.listenerPosition = this.vehicle.root.position;
+    this.explosions.onShake = amount => this.cameraRig.addExplosionShake(amount);
 
     // --- Turbo / boost + exhaust -----------------------------------------
     this.turbo = new TurboSystem();
@@ -201,6 +222,10 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
 
     // --- Player HP / leveling ------------------------------------------
     this.playerHealth = new PlayerHealth();
+    // Heavy armor: offline damage is scaled here; online, the server applies
+    // the same multiplier (server.js applyPlayerDamage) from the class the
+    // client announced on connect.
+    this.playerHealth.damageTakenMultiplier = this.vehicleClass.damageTakenMultiplier;
     this.levelSystem = new LevelSystem();
     // Evolution stage is always re-derived from level (see EvolutionConfig.js)
     // -- this field just tracks "what stage did we last apply" so onLevelUp
@@ -272,6 +297,10 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       // physics substep loop below by checking playerHealth.dead directly.
       this.turret.forceRetract();
       this.vehicleDestruction.activate(this.vehiclePhysics.body);
+      this.explosions.spawn(
+        this.vehicle.root.position.clone(),
+        VEHICLE_EXPLOSION_CONFIG
+      );
       this.showDeathScreen();
     };
 
@@ -323,7 +352,7 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
       }
 
       const vehicleConfig = getVehicleEvolutionConfig(newStage);
-      const turretConfig = getTurretEvolutionConfig(newStage);
+      const turretConfig = getTurretEvolutionConfig(newStage, this.vehicleClass.turretPath);
 
       this.levelUpEffect.trigger({
         level,
@@ -422,7 +451,8 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     };
 
     this.turret = new Turret(
-      this.vehicle.root, this.scene, this.audio, this.player.vehicleColor
+      this.vehicle.root, this.scene, this.audio, this.player.vehicleColor,
+      this.vehicleClass
     );
 
     this.turretStatusElement = document.querySelector("#turret-status");
@@ -450,7 +480,7 @@ this.vehiclePhysics.body.addEventListener("collide", event => {
     };
 
     this.input = new InputManager();
-    this.controller = new ArcadeController();
+    this.controller = new ArcadeController(this.vehicleClass.handling);
 
     this.manualController = new ManualController();
     this.vehicleFeedback = new VehicleFeedback();
@@ -923,7 +953,8 @@ if (controllerButton) {
     this.tutorial = new DrivingTutorial({
       input: this.input,
       mobileControls: this.mobileControls,
-      menu: this.menu
+      menu: this.menu,
+      vehicleClass: this.vehicleClass.id
     });
 
     // Menu -> Controls / Help replays the guide at any time.
@@ -1494,6 +1525,7 @@ if (this.input.consumeReset() && !this.playerHealth.dead) {
 
     this.targetSystem.update(dt, this.vehiclePhysics.body.position, this.camera, this.audio);
     this.turret.update(dt, this.targetSystem);
+    this.explosions.update(dt);
     this.playerHealth.update(dt);
 
     if (this.playerHealth.dead && this.deathScreenTimerElement) {
