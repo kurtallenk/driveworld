@@ -114,6 +114,10 @@ export class InputManager {
       "KeyW", "KeyS", "KeyA", "KeyD", "Space", "KeyR",
       "ShiftLeft", "ShiftRight",
 
+      // Arrow keys are aliases of W/A/S/D (same axes, same meaning) so
+      // beginners who reach for the arrows can drive immediately.
+      "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+
       // T deploys/stows the turret, F toggles Auto Loot. There is no
       // manual pickup key any more: loot is collected by Auto Loot (F)
       // on desktop and by the touch interact button on mobile.
@@ -401,11 +405,13 @@ export class InputManager {
 
   keyboardInput() {
     const pressed = code => Number(this.keys.has(code));
+    // Either key of an alias pair counts once (never sums to 2).
+    const either = (a, b) => Math.max(pressed(a), pressed(b));
 
     return normalizeInput({
-      steering: pressed("KeyD") - pressed("KeyA"),
-      throttle: pressed("KeyW"),
-      brake: pressed("KeyS"),
+      steering: either("KeyD", "ArrowRight") - either("KeyA", "ArrowLeft"),
+      throttle: either("KeyW", "ArrowUp"),
+      brake: either("KeyS", "ArrowDown"),
       handbrake: pressed("Space")
     });
   }

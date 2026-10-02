@@ -1,0 +1,439 @@
+/* ===========================================================================
+   DRIVING TUTORIAL (see src/ui/DrivingTutorial.js)
+   ---------------------------------------------------------------------------
+   A compact coach card anchored to the top-centre so the road and every
+   driving control stay visible and usable. It never covers the bottom
+   control deck. Uses the existing theme tokens (theme.css) and z-scale
+   (layers.css): above HUD/notices, below the death screen and the menu.
+   =========================================================================== */
+
+.dw-tut {
+	--tut-w: min(30rem, calc(100vw - 1.5rem - var(--dw-sa-l, 0px) - var(--dw-sa-r, 0px)));
+	position: fixed;
+	z-index: calc(var(--z-notice, 200) + 10);
+	top: calc(env(safe-area-inset-top, 0px) + 4.75rem);
+	left: 50%;
+	transform: translateX(-50%);
+	width: var(--tut-w);
+	box-sizing: border-box;
+	padding: 0.85rem 1rem 0.8rem;
+	border: 1px solid var(--dw-line-strong, #ffffff33);
+	border-radius: 14px;
+	background: linear-gradient(180deg, rgba(16, 24, 35, 0.94), rgba(10, 16, 24, 0.94));
+	box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+	color: var(--dw-text, #e8eff7);
+	font-family: var(--dw-font, system-ui, sans-serif);
+	pointer-events: auto;
+	animation: dw-tut-in 220ms ease-out;
+}
+
+.dw-tut[hidden] {
+	display: none !important;
+}
+
+@keyframes dw-tut-in {
+	from { opacity: 0; transform: translate(-50%, -8px); }
+	to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ---- header: progress dots, step count, skip ---------------------------- */
+.dw-tut-head {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	margin-bottom: 0.55rem;
+}
+
+.dw-tut-progress {
+	display: flex;
+	gap: 0.3rem;
+}
+
+.dw-tut-dot {
+	width: 0.55rem;
+	height: 0.55rem;
+	border-radius: 50%;
+	background: #ffffff2e;
+	transition: background 160ms, transform 160ms;
+}
+
+.dw-tut-dot.is-done { background: var(--dw-good, #4be3a0); }
+
+.dw-tut-dot.is-current {
+	background: var(--dw-accent, #48d5ff);
+	transform: scale(1.3);
+}
+
+.dw-tut-count {
+	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--dw-text-dim, #8fa3b8);
+}
+
+.dw-tut-skip {
+	margin-left: auto;
+	min-height: 2.5rem;
+	padding: 0 0.9rem;
+	border: 1px solid #ffffff40;
+	border-radius: 999px;
+	background: #ffffff10;
+	color: var(--dw-text, #e8eff7);
+	font: inherit;
+	font-size: 0.85rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+
+.dw-tut-skip:hover { background: #ffffff22; }
+
+/* ---- body: visual demo + copy ------------------------------------------ */
+.dw-tut-body {
+	display: flex;
+	align-items: center;
+	gap: 0.9rem;
+}
+
+.dw-tut-visual {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 0.3rem;
+}
+
+.dw-tut-copy { min-width: 0; }
+
+.dw-tut-title {
+	margin: 0 0 0.2rem;
+	font-size: 1.35rem;
+	font-weight: 700;
+	line-height: 1.1;
+	letter-spacing: 0.02em;
+}
+
+.dw-tut-text {
+	margin: 0;
+	font-size: 1rem;
+	line-height: 1.35;
+	color: #d3deea;
+}
+
+.dw-tut-text b { color: #fff; }
+
+.dw-tut-key {
+	display: inline-grid;
+	place-items: center;
+	min-width: 2.3rem;
+	height: 2.3rem;
+	padding: 0 0.4rem;
+	box-sizing: border-box;
+	border: 1px solid #ffffff55;
+	border-bottom-width: 3px;
+	border-radius: 7px;
+	background: #1d2a3a;
+	font-family: var(--dw-font-num, system-ui, sans-serif);
+	font-size: 1rem;
+	font-weight: 700;
+	color: #fff;
+}
+
+.dw-tut-key--wide { min-width: 4.4rem; font-size: 0.8rem; }
+
+.dw-tut-sep { width: 0.35rem; }
+
+.dw-tut-plus {
+	font-size: 1.2rem;
+	font-weight: 700;
+	color: var(--dw-text-dim, #8fa3b8);
+	padding: 0 0.1rem;
+}
+
+.dw-tut-touch {
+	display: inline-grid;
+	place-items: center;
+	min-width: 2.6rem;
+	height: 2.6rem;
+	padding: 0 0.5rem;
+	box-sizing: border-box;
+	border-radius: 50%;
+	border: 2px solid #ffffff66;
+	background: #ffffff14;
+	font-size: 0.85rem;
+	font-weight: 700;
+	color: #fff;
+}
+
+.dw-tut-touch--gas,
+.dw-tut-touch--brake { border-radius: 10px; }
+.dw-tut-touch--gas { border-color: var(--dw-good, #4be3a0); }
+.dw-tut-touch--brake { border-color: var(--dw-danger, #ff5a54); }
+
+.dw-tut-touch--chip {
+	border-radius: 8px;
+	min-width: 5.5rem;
+	height: 2.1rem;
+	font-size: 0.78rem;
+}
+
+.dw-tut-flag { font-size: 2rem; }
+
+/* Demo keys gently pulse so the eye lands on "what to press". */
+.dw-tut:not([data-complete="true"]) .dw-tut-visual :is(.dw-tut-key, .dw-tut-touch) {
+	animation: dw-tut-press 1.4s ease-in-out infinite;
+}
+
+@keyframes dw-tut-press {
+	0%, 60%, 100% { transform: translateY(0); }
+	30% { transform: translateY(2px); filter: brightness(1.35); }
+}
+
+/* ---- final summary ------------------------------------------------------ */
+.dw-tut-summary {
+	list-style: none;
+	margin: 0.6rem 0 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.45rem 0.8rem;
+}
+
+.dw-tut-summary li {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.9rem;
+	color: #d3deea;
+}
+
+/* ---- footer: meter, goal chips, status, next --------------------------- */
+.dw-tut-foot {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	margin-top: 0.7rem;
+}
+
+.dw-tut-meter {
+	flex: 1;
+	height: 0.45rem;
+	border-radius: 999px;
+	background: #ffffff1a;
+	overflow: hidden;
+}
+
+.dw-tut-meter[hidden] { display: none; }
+
+.dw-tut-meter-fill {
+	height: 100%;
+	background: linear-gradient(90deg, var(--dw-accent, #48d5ff), var(--dw-good, #4be3a0));
+	transform: scaleX(0);
+	transform-origin: left center;
+	transition: transform 120ms linear;
+}
+
+.dw-tut-goals { display: flex; gap: 0.35rem; }
+.dw-tut-goals[hidden] { display: none; }
+
+.dw-tut-goal {
+	padding: 0.2rem 0.55rem;
+	border-radius: 999px;
+	border: 1px solid #ffffff40;
+	font-size: 0.78rem;
+	font-weight: 700;
+	color: var(--dw-text-dim, #8fa3b8);
+}
+
+/* Done state uses a tick + colour, never colour alone. */
+.dw-tut-goal.is-done {
+	border-color: var(--dw-good, #4be3a0);
+	color: var(--dw-good, #4be3a0);
+}
+
+.dw-tut-goal.is-done::before { content: "✓ "; }
+
+.dw-tut-status {
+	font-weight: 700;
+	color: var(--dw-good, #4be3a0);
+	white-space: nowrap;
+}
+
+.dw-tut-status:empty { display: none; }
+
+.dw-tut-next {
+	margin-left: auto;
+	min-height: 2.75rem;
+	min-width: 6rem;
+	padding: 0 1.1rem;
+	border: 1px solid var(--dw-accent, #48d5ff);
+	border-radius: 10px;
+	background: #48d5ff1f;
+	color: #fff;
+	font: inherit;
+	font-size: 1rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	cursor: pointer;
+}
+
+.dw-tut-next:hover { background: #48d5ff38; }
+
+.dw-tut[data-complete="true"] .dw-tut-next,
+.dw-tut-next--primary {
+	background: var(--dw-accent, #48d5ff);
+	color: #04121c;
+}
+
+.dw-tut :is(button):focus-visible {
+	outline: 3px solid #fff;
+	outline-offset: 2px;
+}
+
+.dw-tut[data-complete="true"] {
+	border-color: var(--dw-good, #4be3a0);
+}
+
+/* ---- highlighted real controls ----------------------------------------- */
+.dw-tut-target {
+	animation: dw-tut-ring 1.2s ease-in-out infinite;
+	outline: 3px solid #ffe066 !important;
+	outline-offset: 3px;
+}
+
+.kbd-key.dw-tut-target { outline-offset: 2px; }
+
+@keyframes dw-tut-ring {
+	0%, 100% { outline-color: #ffe066; }
+	50% { outline-color: #ffe06633; }
+}
+
+/* ---- layouts ------------------------------------------------------------ */
+/* Desktop: sit below the top-left chips, clear of the minimap. */
+@media (min-width: 900px) and (pointer: fine) {
+	.dw-tut { top: calc(env(safe-area-inset-top, 0px) + 5.5rem); }
+}
+
+/* Phone portrait: below the vitals/top tiles, over the sky, never the deck. */
+body[data-mc-orientation="portrait"] .dw-tut {
+	top: calc(var(--mc-safe-t, env(safe-area-inset-top, 0px)) + 8.25rem);
+	--tut-w: calc(100vw - 1rem - var(--mc-safe-l, 0px) - var(--mc-safe-r, 0px));
+	padding: 0.7rem 0.8rem;
+}
+
+body[data-mc-orientation="portrait"] .dw-tut-body {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.5rem;
+}
+
+/* Phone landscape: narrow card squeezed between top-left vitals and
+   top-right tiles; text tightened so it stays short. */
+body[data-mc-orientation="landscape"] .dw-tut {
+	top: calc(var(--mc-safe-t, env(safe-area-inset-top, 0px)) + 0.5rem);
+	--tut-w: min(23rem, 44vw);
+	padding: 0.5rem 0.7rem 0.55rem;
+	border-radius: 12px;
+}
+
+body[data-mc-orientation="landscape"] .dw-tut-head { margin-bottom: 0.3rem; }
+body[data-mc-orientation="landscape"] .dw-tut-title { font-size: 1.05rem; }
+body[data-mc-orientation="landscape"] .dw-tut-text { font-size: 0.85rem; line-height: 1.25; }
+body[data-mc-orientation="landscape"] .dw-tut-foot { margin-top: 0.4rem; }
+body[data-mc-orientation="landscape"] .dw-tut-next { min-height: 2.5rem; }
+body[data-mc-orientation="landscape"] .dw-tut-skip { min-height: 2.25rem; }
+body[data-mc-orientation="landscape"] .dw-tut-visual { display: none; }
+body[data-mc-orientation="landscape"] .dw-tut-summary { grid-template-columns: 1fr 1fr; font-size: 0.8rem; gap: 0.3rem; }
+body[data-mc-orientation="landscape"] .dw-tut-touch--chip { min-width: 4.4rem; height: 1.8rem; font-size: 0.68rem; }
+
+/* Very small phones. */
+@media (max-width: 360px) {
+	.dw-tut-title { font-size: 1.15rem; }
+	.dw-tut-text { font-size: 0.92rem; }
+	.dw-tut-count { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dw-tut,
+	.dw-tut-visual :is(.dw-tut-key, .dw-tut-touch),
+	.dw-tut-target {
+		animation: none !important;
+	}
+}
+
+/* ---- phone refinements (after QA screenshots) --------------------------- */
+/* On touch the REAL buttons are ringed, so the demo row is redundant and is
+   dropped to keep the card short and the road visible. */
+body[data-mc-orientation] .dw-tut-visual { display: none; }
+
+body[data-mc-orientation="portrait"] .dw-tut {
+	padding: 0.55rem 0.75rem 0.6rem;
+}
+
+body[data-mc-orientation="portrait"] .dw-tut-head { margin-bottom: 0.35rem; }
+body[data-mc-orientation="portrait"] .dw-tut-title { font-size: 1.15rem; }
+body[data-mc-orientation="portrait"] .dw-tut-text { font-size: 0.95rem; line-height: 1.3; }
+body[data-mc-orientation="portrait"] .dw-tut-foot { margin-top: 0.45rem; }
+body[data-mc-orientation="portrait"] .dw-tut-skip { min-height: 2.5rem; font-size: 0.78rem; }
+body[data-mc-orientation="portrait"] .dw-tut-next { min-height: 2.6rem; }
+
+/* Landscape: fit the gap between the vitals card and the top-right tiles. */
+body[data-mc-orientation="landscape"] .dw-tut {
+	--tut-w: min(20rem, 38vw);
+}
+
+body[data-mc-orientation="landscape"] .dw-tut-count { display: none; }
+body[data-mc-orientation="landscape"] .dw-tut-skip { min-height: 2.2rem; font-size: 0.72rem; padding: 0 0.7rem; }
+body[data-mc-orientation="landscape"] .dw-tut-next { min-height: 2.4rem; min-width: 4.8rem; font-size: 0.9rem; }
+body[data-mc-orientation="landscape"] .dw-tut-goal { font-size: 0.7rem; padding: 0.15rem 0.45rem; }
+
+/* Landscape: span exactly the free gap between the top-left vitals card and
+   the top-right tile row (same variables landscape-fix.css lays those out
+   with), centred, so the card can never sit on CHANGE VIEW / Fullscreen. */
+body[data-mc-orientation="landscape"] .dw-tut {
+	left: calc(var(--lf-el, 12px) + var(--lf-vitals-w, 30vw) + 8px);
+	right: calc(var(--lf-er, 12px) + 4 * var(--lf-tile-w, 3.4rem) + 3 * var(--lf-tile-gap, 6px) + 8px);
+	width: auto;
+	max-width: 22rem;
+	margin-inline: auto;
+	transform: none;
+	animation-name: dw-tut-in-flat;
+}
+
+@keyframes dw-tut-in-flat {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+body[data-mc-orientation="landscape"] .dw-tut-goals { display: none; }
+
+/* Desktop / keyboard: never cover the left HUD column (keyboard panel +
+   dash, 340px + 16px margin, see hud-layout.css), where the highlighted
+   keycaps are. Centred in the gap up to the minimap column; on very narrow
+   windows it may overlap the minimap instead, which matters less while
+   learning to drive. */
+body:not([data-mc-orientation="portrait"]):not([data-mc-orientation="landscape"]) .dw-tut {
+	left: calc(356px + 0.75rem);
+	right: 0.75rem;
+	width: auto;
+	max-width: 30rem;
+	margin-inline: auto;
+	transform: none;
+	animation-name: dw-tut-in-flat;
+}
+
+@media (min-width: 1000px) {
+	body:not([data-mc-orientation="portrait"]):not([data-mc-orientation="landscape"]) .dw-tut {
+		right: calc(200px + 0.75rem);
+	}
+}
+
+/* Narrow desktop windows: no room for the demo keys beside the text. */
+@media (max-width: 1000px) {
+	body:not([data-mc-orientation="portrait"]):not([data-mc-orientation="landscape"]) .dw-tut-body {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.5rem;
+	}
+}

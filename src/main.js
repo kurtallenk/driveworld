@@ -19,6 +19,10 @@ import "./ui/portrait-fix.css";
 // Landscape composition. Peer of portrait-fix.css: the two are mutually
 // exclusive by selector ([data-mc-orientation]), not by load order.
 import "./ui/landscape-fix.css";
+// UX pass (controls sizing, touch guards, tutorial, help). Loaded LAST so
+// its small, scoped overrides win without editing the layout files above.
+import "./ui/controls-ux.css";
+import "./ui/tutorial.css";
 
 import { Game } from "./core/Game.js";
 import { setupDiagnosticsExport } from "./ui/DiagnosticsExport.js";
@@ -95,6 +99,10 @@ startButton.addEventListener("click", async () => {
     loading.hidden = true;
 
     game.start();
+
+    // First visit: start the interactive driving guide (skippable, and
+    // replayable later from Menu -> Controls / Help).
+    game.tutorial?.autoStart();
 
     // A missing multiplayer server does not prevent local driving.
     try {

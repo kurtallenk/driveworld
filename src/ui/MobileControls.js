@@ -446,6 +446,17 @@ export class MobileControls {
     document.body.append(this.root);
   }
 
+  // Tiny confirmation pulse so a press is felt, not only seen. Android
+  // only (iOS Safari has no Vibration API); silently a no-op elsewhere.
+  haptic() {
+    if (this.hapticsEnabled === false) return;
+    try {
+      navigator.vibrate?.(8);
+    } catch {
+      /* Some browsers throw when vibrate is called without user activation. */
+    }
+  }
+
   makePedal(label, className, icon = "") {
     const el = document.createElement("div");
 
@@ -615,9 +626,16 @@ export class MobileControls {
 
   bindSteering() {
     const updateTarget = () => {
-      this.steeringTarget =
-        (this.steeringRightHeld ? 1 : 0) -
-        (this.steeringLeftHeld ? 1 : 0);
+      // Last-pressed side wins. Holding left and then also pressing right
+      // steers right (and releasing right returns to left) instead of the
+      // two cancelling to straight, which felt like a dropped input.
+      if (this.steeringLeftHeld && this.steeringRightHeld) {
+        this.steeringTarget = this.lastSteerSide === "left" ? -1 : 1;
+      } else {
+        this.steeringTarget =
+          (this.steeringRightHeld ? 1 : 0) -
+          (this.steeringLeftHeld ? 1 : 0);
+      }
 
       if (this.steeringAnimId === null) {
         this.runSteeringLoop();
@@ -642,6 +660,7 @@ export class MobileControls {
         el.classList.add(
           "mc-pressed"
         );
+        this.haptic();
 
         setHeld(true);
         updateTarget();
@@ -690,6 +709,7 @@ export class MobileControls {
       this.steerLeftEl,
       held => {
         this.steeringLeftHeld = held;
+        if (held) this.lastSteerSide = "left";
       }
     );
 
@@ -697,6 +717,7 @@ export class MobileControls {
       this.steerRightEl,
       held => {
         this.steeringRightHeld = held;
+        if (held) this.lastSteerSide = "right";
       }
     );
 
@@ -870,6 +891,7 @@ export class MobileControls {
       el.classList.add(
         "mc-pressed"
       );
+      this.haptic();
 
       this.input.setMobileInput({
         [axisName]: 1

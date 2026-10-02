@@ -31,7 +31,16 @@ function loadPrefs() {
     // the default, visible/compact, same as a first-time player.
   }
 
-  return { visible: true, size: "compact" };
+  // First visit only (no saved preference): touch devices start with chat
+  // tucked behind its Chat button so the expanded panel never covers the
+  // road on a phone. Desktop keeps the original visible default. A saved
+  // choice always wins, exactly as before.
+  const touchPrimary = Boolean(
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(pointer: coarse)").matches
+  );
+
+  return { visible: !touchPrimary, size: "compact" };
 }
 
 function savePrefs(prefs) {
