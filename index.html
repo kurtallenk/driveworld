@@ -73,6 +73,10 @@
             </button>
 
             <p id="loading-status">Drive pa more...</p>
+            <p class="intro-guide-hint">
+              <span class="intro-guide-keys" aria-hidden="true">WASD / ← ↑ → ↓</span>
+              First drive? A quick, skippable controls guide shows you the basics.
+            </p>
           </div>
 
           <aside class="intro-patch" aria-labelledby="intro-patch-title">
@@ -295,22 +299,22 @@
         <div class="kbd-modegroup kbd-modegroup--arcade">
           <div class="kbd-row kbd-row--top">
             <div class="kbd-group">
-              <span class="kbd-key" data-key="KeyW">W</span>
-              <span class="kbd-caption">Gas</span>
+              <span class="kbd-key" data-key="KeyW" data-key-alt="ArrowUp">W</span>
+              <span class="kbd-caption">Gas · ↑</span>
             </div>
           </div>
           <div class="kbd-row kbd-row--mid">
             <div class="kbd-group">
-              <span class="kbd-key" data-key="KeyA">A</span>
-              <span class="kbd-caption">Left</span>
+              <span class="kbd-key" data-key="KeyA" data-key-alt="ArrowLeft">A</span>
+              <span class="kbd-caption">Left · ←</span>
             </div>
             <div class="kbd-group">
-              <span class="kbd-key" data-key="KeyS">S</span>
-              <span class="kbd-caption">Brake / Rev</span>
+              <span class="kbd-key" data-key="KeyS" data-key-alt="ArrowDown">S</span>
+              <span class="kbd-caption">Brake / Rev · ↓</span>
             </div>
             <div class="kbd-group">
-              <span class="kbd-key" data-key="KeyD">D</span>
-              <span class="kbd-caption">Right</span>
+              <span class="kbd-key" data-key="KeyD" data-key-alt="ArrowRight">D</span>
+              <span class="kbd-caption">Right · →</span>
             </div>
           </div>
           <div class="kbd-row kbd-row--wide">
@@ -332,22 +336,22 @@
         <div class="kbd-modegroup kbd-modegroup--manual">
           <div class="kbd-row kbd-row--top">
             <div class="kbd-group">
-              <span class="kbd-key" data-key="KeyW">W</span>
-              <span class="kbd-caption">Gas</span>
+              <span class="kbd-key" data-key="KeyW" data-key-alt="ArrowUp">W</span>
+              <span class="kbd-caption">Gas · ↑</span>
             </div>
           </div>
           <div class="kbd-row kbd-row--mid">
             <div class="kbd-group">
-              <span class="kbd-key" data-key="KeyA">A</span>
-              <span class="kbd-caption">Left</span>
+              <span class="kbd-key" data-key="KeyA" data-key-alt="ArrowLeft">A</span>
+              <span class="kbd-caption">Left · ←</span>
             </div>
             <div class="kbd-group">
-              <span class="kbd-key" data-key="KeyS">S</span>
-              <span class="kbd-caption">Brake</span>
+              <span class="kbd-key" data-key="KeyS" data-key-alt="ArrowDown">S</span>
+              <span class="kbd-caption">Brake · ↓</span>
             </div>
             <div class="kbd-group">
-              <span class="kbd-key" data-key="KeyD">D</span>
-              <span class="kbd-caption">Right</span>
+              <span class="kbd-key" data-key="KeyD" data-key-alt="ArrowRight">D</span>
+              <span class="kbd-caption">Right · →</span>
             </div>
           </div>
           <div class="kbd-row kbd-row--wide">
@@ -633,7 +637,10 @@
         <p>Local session paused</p>
       </div>
 
-      <button id="close-menu" type="button">Resume · ESC</button>
+      <div class="settings-header-actions">
+        <button id="open-guide" type="button" data-open-guide>Controls / Help</button>
+        <button id="close-menu" type="button">Resume · ESC</button>
+      </div>
     </header>
 
     <nav class="settings-tabs" role="tablist" aria-label="Settings categories">
@@ -673,6 +680,17 @@
       aria-labelledby="settings-tab-controls"
       data-settings-page="controls"
     >
+      <h3>How to drive</h3>
+      <ul class="settings-controls-ref">
+        <li><b>Steer</b> A / D or ← / → · touch: ◀ ▶</li>
+        <li><b>Gas</b> W or ↑ · touch: GAS</li>
+        <li><b>Brake / reverse</b> S or ↓ · touch: BRAKE (hold when stopped)</li>
+        <li><b>Handbrake</b> Space · touch: HAND BRAKE</li>
+        <li><b>Turbo</b> Shift · touch: TURBO</li>
+        <li><b>Reset car</b> R</li>
+      </ul>
+      <button type="button" class="settings-guide-btn" data-open-guide>Replay driving guide</button>
+
       <h3>Input device</h3>
       <div id="menu-controls"></div>
       <p class="settings-help">
